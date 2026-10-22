@@ -104,3 +104,16 @@ h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5p
 .box .row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
 .box .row span{color:var(--muted)}
 .stack{display:flex;flex-direction:column;gap:8px}
+
+/* Google-Kalender */
+.pc.ev{background:transparent;padding:1px 3px}
+.pc.ev .pn{font-weight:600}
+.evrow{background:var(--card);border:1px solid var(--line);border-left:6px dashed var(--pc);border-radius:12px;padding:9px 12px;margin-bottom:8px}
+.box .ct{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px}
+.box .hint{font-size:13.5px;color:var(--muted);margin:0 0 10px}
+.box .err{font-size:13.5px;color:var(--accent);margin:8px 0}
+.calrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14.5px}
+.calrow input{width:20px;height:20px;flex:none}
+.calrow i{width:10px;height:10px;border-radius:50%;flex:none}
+.btn:disabled{opacity:.6}
+.box + .box,.box + .stack{margin-top:10px}

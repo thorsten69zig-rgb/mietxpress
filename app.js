@@ -14,7 +14,8 @@
     view: 'monat', filter: 'anstehend', q: '',
     cursor: null, sel: null, open: {},
     von: '', bis: '',
-    menu: false, online: navigator.onLine, importAt: null, ready: false
+    menu: false, online: navigator.onLine, importAt: null, ready: false,
+    cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null }
   };
 
   // ===== Hilfsfunktionen =====
@@ -113,8 +114,88 @@
     state.arts = a.map(normArt).sort((x, y) => x.sort - y.sort || x.name.localeCompare(y.name));
     state.sperre = s;
     state.importAt = imp;
+    const [gc, gs, ge, ga, gcon] = await Promise.all([
+      DB.getMeta('gcalCals'), DB.getMeta('gcalSel'), DB.getMeta('gcalEvents'), DB.getMeta('gcalAt'), DB.getMeta('gcalConnected')
+    ]);
+    state.cal.cals = gc || [];
+    state.cal.sel = gs || [];
+    state.cal.events = ge || [];
+    state.cal.at = ga || null;
+    state.cal.connected = !!gcon;
     state.ready = true;
   }
+
+  // ===== Google-Kalender (nur lesen, offline zwischengespeichert) =====
+  async function fetchEvents() {
+    const t = today0();
+    const from = iso(new Date(t.getFullYear(), t.getMonth() - 1, 1));
+    const to = iso(new Date(t.getFullYear(), t.getMonth() + 10, 1));
+    let all = [];
+    for (const id of state.cal.sel) all = all.concat(await GCAL.listEvents(id, from, to));
+    state.cal.events = all;
+    state.cal.at = new Date().toISOString();
+    await DB.setMeta('gcalEvents', all);
+    await DB.setMeta('gcalAt', state.cal.at);
+  }
+
+  async function connectGoogle() {
+    state.cal.busy = true;
+    state.cal.err = null;
+    render();
+    try {
+      await GCAL.signIn();
+      const cals = await GCAL.listCalendars();
+      const keep = state.cal.sel.filter((id) => cals.some((c) => c.id === id));
+      state.cal.sel = keep.length ? keep : cals.map((c) => c.id);
+      state.cal.cals = cals;
+      state.cal.connected = true;
+      await DB.setMeta('gcalCals', cals);
+      await DB.setMeta('gcalSel', state.cal.sel);
+      await DB.setMeta('gcalConnected', true);
+      await fetchEvents();
+    } catch (e) {
+      state.cal.err = e.message || 'Fehler beim Verbinden';
+    }
+    state.cal.busy = false;
+    render();
+  }
+
+  async function toggleCal(id) {
+    const i = state.cal.sel.indexOf(id);
+    if (i > -1) state.cal.sel.splice(i, 1); else state.cal.sel.push(id);
+    await DB.setMeta('gcalSel', state.cal.sel);
+    if (GCAL.isSignedIn()) {
+      try { await fetchEvents(); } catch (e) { state.cal.err = e.message; }
+    }
+    render();
+  }
+
+  async function disconnectGoogle() {
+    GCAL.signOut();
+    state.cal = { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null };
+    await DB.setMeta('gcalCals', []);
+    await DB.setMeta('gcalSel', []);
+    await DB.setMeta('gcalEvents', []);
+    await DB.setMeta('gcalAt', null);
+    await DB.setMeta('gcalConnected', false);
+    render();
+  }
+
+  function evMap() {
+    const m = {};
+    state.cal.events.forEach((ev) => {
+      if (state.cal.sel.indexOf(ev.cal) < 0) return;
+      let d = parse(ev.start);
+      const end = parse(ev.ende);
+      for (let n = 0; d <= end && n < 62; n++) {
+        const k = iso(d);
+        (m[k] = m[k] || []).push(ev);
+        d = addDays(d, 1);
+      }
+    });
+    return m;
+  }
+  const calColor = (id) => { const c = state.cal.cals.find((x) => x.id === id); return c ? c.color : '#6d28d9'; };
 
   async function replaceData(data) {
     const bookings = (data.buchungen || []).map((b, i) => norm(Object.assign({ id: 'b' + i }, b)));
@@ -236,20 +317,26 @@
     const rows = Math.ceil((lead + days) / 7);
     const start = new Date(y, mo, 1 - lead);
     const map = dayMap();
+    const ems = evMap();
     const ts = iso(today0());
     for (let i = 0; i < rows * 7; i++) {
-      const d = addDays(start, i), ds = iso(d), list = map[ds] || [];
+      const d = addDays(start, i), ds = iso(d), list = map[ds] || [], evs = ems[ds] || [];
+      const bShown = Math.min(list.length, 2);
+      const eShown = Math.min(evs.length, 3 - bShown);
+      const more = list.length + evs.length - bShown - eShown;
       grid.append(h('button', {
         class: 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === ts ? ' today' : '') + (ds === state.sel ? ' sel' : ''),
         onclick: () => { state.sel = ds; render(); }
       },
         h('div', { class: 'dn' }, d.getDate()),
-        list.slice(0, 2).map((b) => {
+        list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
           return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:3px solid ' + col + ';background:' + col + '26' },
             h('span', { class: 'pn' }, b.name || '—'));
         }),
-        list.length > 2 ? h('div', { class: 'more' }, '+' + (list.length - 2)) : null));
+        evs.slice(0, eShown).map((ev) =>
+          h('span', { class: 'pc ev', style: 'border:1px dashed ' + calColor(ev.cal) }, h('span', { class: 'pn' }, ev.title))),
+        more > 0 ? h('div', { class: 'more' }, '+' + more) : null));
     }
     main.append(grid);
 
@@ -257,6 +344,14 @@
     main.append(h('h3', {}, fmtFull(state.sel)));
     if (sel.length) sel.forEach((b) => main.append(card(b)));
     else main.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
+
+    const dayEv = (ems[state.sel] || []).slice().sort((a, b) => (a.zeit || '').localeCompare(b.zeit || ''));
+    if (dayEv.length) {
+      main.append(h('h3', {}, 'Kalender'));
+      dayEv.forEach((ev) => main.append(h('div', { class: 'evrow', style: '--pc:' + calColor(ev.cal) },
+        h('b', {}, ev.title),
+        h('div', { class: 'art' }, [ev.zeit || 'ganztägig', ev.start !== ev.ende ? fmtD(ev.start) + ' – ' + fmtD(ev.ende) : '', ev.ort].filter(Boolean).join(' · ')))));
+    }
   }
 
   function viewListe(main) {
@@ -309,6 +404,25 @@
   }
 
   // ===== Menü / Daten =====
+  function googleBox() {
+    const c = state.cal;
+    const kids = [h('div', { class: 'ct' }, 'Google-Kalender')];
+    if (!c.connected) {
+      kids.push(h('p', { class: 'hint' }, 'Verbinde dein Google-Konto, um deine Kalendertermine zu sehen. Sie werden für den Offline-Betrieb gespeichert. Die App darf den Kalender nur lesen.'));
+    } else {
+      kids.push(h('div', { class: 'row' }, h('span', {}, 'Stand'), h('b', {}, c.at ? new Date(c.at).toLocaleString('de-DE') : 'noch nie')));
+      c.cals.forEach((cal) => kids.push(h('label', { class: 'calrow' },
+        h('input', { type: 'checkbox', checked: c.sel.indexOf(cal.id) > -1 ? '' : null, onchange: () => toggleCal(cal.id) }),
+        h('i', { style: 'background:' + cal.color }), cal.name)));
+    }
+    if (c.err) kids.push(h('p', { class: 'err' }, c.err));
+    kids.push(h('div', { class: 'stack' },
+      h('button', { class: 'btn', disabled: c.busy ? '' : null, onclick: connectGoogle },
+        c.busy ? 'Bitte warten …' : (c.connected ? 'Kalender aktualisieren' : 'Mit Google verbinden')),
+      c.connected ? h('button', { class: 'btn sec', onclick: disconnectGoogle }, 'Verbindung trennen') : null));
+    return h('div', { class: 'box' }, kids);
+  }
+
   function viewMenu() {
     const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none' });
     file.addEventListener('change', async () => {
@@ -333,6 +447,7 @@
         h('div', { class: 'row' }, h('span', {}, 'Artikel'), h('b', {}, state.arts.length)),
         h('div', { class: 'row' }, h('span', {}, 'Sperrliste'), h('b', {}, state.sperre.length)),
         h('div', { class: 'row' }, h('span', {}, 'Letzter Import'), h('b', {}, imp))),
+      googleBox(),
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: () => file.click() }, 'Daten aus Datei laden (JSON)'),
         h('button', { class: 'btn sec', onclick: () => download('mietxpress-daten-' + iso(new Date()) + '.json',

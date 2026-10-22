@@ -1,0 +1,119 @@
+/* Google-Anbindung: Anmelden (Google Identity Services, nur im Browser, kein Server)
+   und Kalender lesen. Das Skript von Google wird erst beim Antippen geladen, damit die
+   App offline sofort startet. Der Zugriff ist nur lesend (calendar.readonly). */
+const GCAL = (function () {
+  const CLIENT_ID = '780465482026-0kj6jjln8md7c96hiphjvs0tom5k8fg9.apps.googleusercontent.com';
+  const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.file';
+  const API = 'https://www.googleapis.com/calendar/v3';
+  const PALETTE = ['#6d28d9', '#0f766e', '#b58900', '#2b6cb0', '#be123c', '#047857', '#9333ea', '#c2410c'];
+
+  let tokenClient = null;
+  let token = null;
+  let tokenExp = 0;
+
+  function loadGsi() {
+    return new Promise((resolve, reject) => {
+      if (window.google && google.accounts && google.accounts.oauth2) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Google ist nicht erreichbar. Bist du offline?'));
+      document.head.append(s);
+    });
+  }
+
+  // Muss durch einen Fingertipp ausgelöst werden (sonst blockiert iOS das Anmeldefenster)
+  async function signIn() {
+    if (token && Date.now() < tokenExp) return token;
+    await loadGsi();
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) {
+        tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPE, callback: () => {} });
+      }
+      tokenClient.callback = (r) => {
+        if (r.error) return reject(new Error(r.error_description || r.error));
+        token = r.access_token;
+        tokenExp = Date.now() + ((Number(r.expires_in) || 3600) - 60) * 1000;
+        resolve(token);
+      };
+      tokenClient.error_callback = (e) => reject(new Error(e && e.type === 'popup_closed' ? 'Anmeldung abgebrochen' : 'Anmeldung fehlgeschlagen'));
+      tokenClient.requestAccessToken({ prompt: '' });
+    });
+  }
+
+  function signOut() {
+    if (token && window.google && google.accounts && google.accounts.oauth2) {
+      try { google.accounts.oauth2.revoke(token, () => {}); } catch (e) { /* egal */ }
+    }
+    token = null;
+    tokenExp = 0;
+  }
+
+  const isSignedIn = () => !!token && Date.now() < tokenExp;
+
+  async function api(path, params) {
+    if (!isSignedIn()) throw new Error('Nicht angemeldet');
+    const url = new URL(API + path);
+    Object.keys(params || {}).forEach((k) => { if (params[k] != null) url.searchParams.set(k, params[k]); });
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    if (res.status === 401) { token = null; tokenExp = 0; throw new Error('Anmeldung abgelaufen, bitte neu verbinden'); }
+    if (!res.ok) throw new Error('Google-Fehler ' + res.status);
+    return res.json();
+  }
+
+  async function listCalendars() {
+    const j = await api('/users/me/calendarList', { minAccessRole: 'reader', maxResults: 100 });
+    return (j.items || []).map((c, i) => ({
+      id: c.id,
+      name: c.summaryOverride || c.summary || c.id,
+      color: PALETTE[i % PALETTE.length],
+      primary: !!c.primary
+    }));
+  }
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const isoLocal = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const prevDay = (s) => { const p = s.split('-').map(Number); return isoLocal(new Date(p[0], p[1] - 1, p[2] - 1)); };
+
+  // Google-Termin in unser Format: ganztägige Termine enden bei Google "exklusiv"
+  function normEvent(ev, calId) {
+    if (!ev || ev.status === 'cancelled' || !ev.start) return null;
+    let start, ende, zeit = '';
+    if (ev.start.date) {
+      start = ev.start.date;
+      ende = ev.end && ev.end.date ? prevDay(ev.end.date) : start;
+      if (ende < start) ende = start;
+    } else if (ev.start.dateTime) {
+      const s = new Date(ev.start.dateTime);
+      start = isoLocal(s);
+      zeit = pad(s.getHours()) + ':' + pad(s.getMinutes());
+      ende = start;
+      if (ev.end && ev.end.dateTime) {
+        const e = new Date(ev.end.dateTime);
+        ende = isoLocal(e);
+        if (ende > start && e.getHours() === 0 && e.getMinutes() === 0) ende = prevDay(ende);
+        if (ende < start) ende = start;
+      }
+    } else return null;
+    return { id: calId + ':' + ev.id, cal: calId, title: ev.summary || '(ohne Titel)', start, ende, zeit, ort: ev.location || '' };
+  }
+
+  async function listEvents(calId, fromIso, toIso) {
+    const out = [];
+    let pageToken = null;
+    for (let page = 0; page < 6; page++) {
+      const j = await api('/calendars/' + encodeURIComponent(calId) + '/events', {
+        singleEvents: 'true', orderBy: 'startTime', maxResults: 250, pageToken,
+        timeMin: new Date(fromIso + 'T00:00:00').toISOString(),
+        timeMax: new Date(toIso + 'T00:00:00').toISOString()
+      });
+      (j.items || []).forEach((ev) => { const n = normEvent(ev, calId); if (n) out.push(n); });
+      pageToken = j.nextPageToken;
+      if (!pageToken) break;
+    }
+    return out;
+  }
+
+  return { signIn, signOut, isSignedIn, listCalendars, listEvents, normEvent };
+})();
