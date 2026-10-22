@@ -1,0 +1,5 @@
+# Echte Kundendaten gehören nie ins Repository
+backup*.json
+daten*.json
+mietxpress-daten*.json
+.DS_Store
