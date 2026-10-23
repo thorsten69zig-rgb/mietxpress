@@ -17,7 +17,7 @@
     menu: false, online: navigator.onLine, importAt: null, ready: false,
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
     drive: { id: null, at: null, busy: false, err: null, msg: null },
-    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, delArm: null,
+    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, priceQ: '', pvon: '', pbis: '', delArm: null,
     calWrite: false, calDel: [], synced: false, autoAt: 0
   };
 
@@ -468,12 +468,44 @@
   const sortByStart = (a, b) => (a.start + (a.zeit || '')).localeCompare(b.start + (b.zeit || ''));
 
   // ===== Ansichten =====
+  function gotoMonth(y, mo) {
+    state.cursor = new Date(y, mo, 1);
+    const t = today0();
+    state.sel = (state.cursor.getFullYear() === t.getFullYear() && state.cursor.getMonth() === t.getMonth()) ? iso(t) : iso(state.cursor);
+    render();
+  }
+  // Ereignis-Art: MietXpress-Kalender, Privat, Geburtstag, Feiertage/Kalenderwochen
+  function evKind(ev) {
+    const cal = state.cal.cals.find((c) => c.id === ev.cal);
+    const nm = cal ? cal.name : '';
+    if (ev.typ === 'birthday' || /geburtstag|🎂/i.test(ev.title) || /geburtstag|birthday/i.test(nm)) return 'bday';
+    if (/mietxpress/i.test(nm)) return 'mx';
+    if (/feiertag|kalenderwoche/i.test(nm)) return 'info';
+    return 'priv';
+  }
+  const KIND_ORDER = { mx: 0, bday: 1, priv: 2, info: 3 };
+  const KIND_LABEL = { mx: 'MietXpress-Kalender', bday: 'Geburtstage 🎂', priv: 'Privat', info: 'Feiertage & Wochen' };
+  const byKind = (a, b) => (KIND_ORDER[evKind(a)] - KIND_ORDER[evKind(b)]) || (a.zeit || '').localeCompare(b.zeit || '');
+  function evChip(ev) {
+    const k = evKind(ev), col = calColor(ev.cal);
+    const style = k === 'mx' ? 'border:1px dashed ' + col : (k === 'priv' ? 'background:' + col + '33;border-left:3px dotted ' + col : null);
+    return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')));
+  }
+
   function viewMonat(main) {
     const c = state.cursor, y = c.getFullYear(), mo = c.getMonth();
     main.append(h('div', { class: 'mnav' },
-      h('button', { 'aria-label': 'Vorheriger Monat', onclick: () => { state.cursor = new Date(y, mo - 1, 1); render(); } }, '‹'),
+      h('button', { 'aria-label': 'Vorheriger Monat', onclick: () => gotoMonth(y, mo - 1) }, '‹'),
       h('b', {}, MONTHS[mo] + ' ' + y),
-      h('button', { 'aria-label': 'Nächster Monat', onclick: () => { state.cursor = new Date(y, mo + 1, 1); render(); } }, '›')));
+      h('button', { 'aria-label': 'Nächster Monat', onclick: () => gotoMonth(y, mo + 1) }, '›')));
+    // Wischen: nach links = nächster Monat, nach rechts = vorheriger
+    let sx = null, sy = null;
+    main.addEventListener('touchstart', (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; }, { passive: true });
+    main.addEventListener('touchend', (e) => {
+      if (sx == null) return;
+      const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) gotoMonth(y, mo + (dx < 0 ? 1 : -1));
+    }, { passive: true });
 
     const grid = h('div', { class: 'grid' });
     DOW.forEach((d) => grid.append(h('div', { class: 'dow' }, d)));
@@ -485,7 +517,7 @@
     const ems = evMap();
     const ts = iso(today0());
     for (let i = 0; i < rows * 7; i++) {
-      const d = addDays(start, i), ds = iso(d), list = map[ds] || [], evs = ems[ds] || [];
+      const d = addDays(start, i), ds = iso(d), list = map[ds] || [], evs = (ems[ds] || []).slice().sort(byKind);
       const bShown = Math.min(list.length, 2);
       const eShown = Math.min(evs.length, 3 - bShown);
       const more = list.length + evs.length - bShown - eShown;
@@ -499,24 +531,26 @@
           return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:3px solid ' + col + ';background:' + col + '26' },
             h('span', { class: 'pn' }, b.name || '—'));
         }),
-        evs.slice(0, eShown).map((ev) =>
-          h('span', { class: 'pc ev', style: 'border:1px dashed ' + calColor(ev.cal) }, h('span', { class: 'pn' }, ev.title))),
+        evs.slice(0, eShown).map(evChip),
         more > 0 ? h('div', { class: 'more' }, '+' + more) : null));
     }
     main.append(grid);
 
     const sel = (map[state.sel] || []).slice().sort(sortByStart);
     main.append(h('h3', {}, fmtFull(state.sel)));
+    main.append(h('div', { class: 'grp grp-mx' }, 'MietXpress · Buchungen'));
     if (sel.length) sel.forEach((b) => main.append(card(b)));
     else main.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
 
-    const dayEv = (ems[state.sel] || []).slice().sort((a, b) => (a.zeit || '').localeCompare(b.zeit || ''));
-    if (dayEv.length) {
-      main.append(h('h3', {}, 'Kalender'));
-      dayEv.forEach((ev) => main.append(h('div', { class: 'evrow', style: '--pc:' + calColor(ev.cal) },
-        h('b', {}, ev.title),
-        h('div', { class: 'art' }, [ev.zeit || 'ganztägig', ev.start !== ev.ende ? fmtD(ev.start) + ' – ' + fmtD(ev.ende) : '', ev.ort].filter(Boolean).join(' · ')))));
-    }
+    const dayEv = (ems[state.sel] || []).slice().sort(byKind);
+    let lastK = null;
+    dayEv.forEach((ev) => {
+      const k = evKind(ev);
+      if (k !== lastK) { main.append(h('div', { class: 'grp grp-' + k }, KIND_LABEL[k])); lastK = k; }
+      main.append(h('div', { class: 'evrow ev-' + k, style: '--pc:' + calColor(ev.cal) },
+        h('b', {}, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')),
+        h('div', { class: 'art' }, [ev.zeit || 'ganztägig', ev.start !== ev.ende ? fmtD(ev.start) + ' – ' + fmtD(ev.ende) : '', ev.ort].filter(Boolean).join(' · '))));
+    });
   }
 
   function viewListe(main) {
@@ -649,7 +683,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 9')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 10')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -714,6 +748,7 @@
       b.kaution > 0 ? h('div', { class: 'arow' }, ['offen', 'erhalten', 'zurueck'].map((k) =>
         h('button', { class: b.kautionStatus === k ? 'on' : '', onclick: () => patchBooking(b, { kautionStatus: k }) }, 'Kaution ' + KAUT[k].toLowerCase()))) : null,
       h('div', { class: 'arow' },
+        h('button', { onclick: () => openMsgs(b) }, '💬 Nachricht'),
         h('button', { onclick: () => openEdit(b) }, 'Bearbeiten'),
         h('button', { class: 'del', onclick: delClick }, 'Buchung löschen')));
   }
@@ -868,6 +903,214 @@
     return root;
   }
 
+  // ===== Preisliste 2026 (Stand 10/2026) =====
+  const TIERS = [['Mo–Do', '1 Tag Mo–Do'], ['Fr–So / Feiertag', '1 Tag Fr–So / Feiertag'], ['Fr–Sa / Sa–So', 'Wochenendpaket Fr–Sa / Sa–So'], ['Fr–So ganzes WE', 'Wochenendpaket Fr–So']];
+  const PRICES = [
+    { cat: 'Kombi-Angebote', short: 'Kombi', items: [
+      { n: 'Hüpfburg + JBL PartyBox 520', inv: null, p: [60, 80, 130, 160], k: 200,
+        note: 'Hüpfburg frei wählbar: Schloss, Kleines Schloss, Slide oder Space. Bei Buchung: gewählte Hüpfburg + PartyBox JBL 520 als zwei Positionen eintragen, damit beides blockiert wird.' }
+    ] },
+    { cat: 'Hüpfburgen', short: 'Hüpfburgen', items: [
+      { n: 'Hüpfburg Schloss', inv: 'Hüpfburg Schloss', p: [40, 50, 80, 100], k: 100 },
+      { n: 'Hüpfburg Slide', inv: 'Hüpfburg Slide', p: [40, 50, 80, 100], k: 100 },
+      { n: 'Hüpfburg Space', inv: 'Hüpfburg Space', p: [40, 50, 80, 100], k: 100 },
+      { n: 'Hüpfburg Kleines Schloss', inv: 'Hüpfburg Kleines Schloss', p: [40, 50, 80, 100], k: 100 }
+    ] },
+    { cat: 'Partytechnik · Sound · Licht', short: 'Technik', items: [
+      { n: 'PartyBox JBL 520', inv: 'PartyBox JBL 520', p: [30, 40, 60, 80], k: 100, x: ['+ Licht Paket 1: 10 €', '+ Mikrofon Paket: 10 €'] },
+      { n: 'DJ & Party Paket', inv: 'DJ & Party Paket', p: [90, 110, 175, 220], k: 150, note: 'inkl. 2x Mikro, 2x JBL 520, 2x Ständer, Nebelmaschine, Partylicht' },
+      { n: 'LED Lichtanlage', inv: 'LED Lichtanlage', p: [30, 35, 60, 80], k: 50 }
+    ] },
+    { cat: 'Catering-Maschinen', short: 'Catering', items: [
+      { n: 'Popcornmaschine Star', inv: 'Popcornmaschine Star', p: [40, 50, 80, 100], k: 50, x: ['+ Popcorn Paket 1: 25 €', '+ Reinigung: 30 €'] },
+      { n: 'Slush Eis Maschine Ninja', inv: 'Slush Eis Maschine Ninja', p: [35, 40, 70, 85], k: 50, x: ['+ Slush Paket 1: 15 €', '+ Reinigung: 15 €'] },
+      { n: 'Zuckerwattenmaschine Sweet', inv: 'Zuckerwattenmaschine Sweet', p: [30, 40, 60, 80], k: 50, x: ['+ Zucker Paket (Zucker & Stäbe): 7 €', '+ Reinigung: 15 €'] },
+      { n: 'Crêpes Maker Paris', inv: 'Crepes Maschine Paris', p: [20, 30, 50, 70], k: 50, x: ['+ Langzeitangebot 10 Tage: 150 €'] },
+      { n: 'Speisewärmer / Wärmebehälter', inv: 'Speisewärmer Eat', p: [8, 10, 13, 18], k: 15, x: ['+ 2x Wärmepaste: 5 €'] },
+      { n: 'Party-Kühlschrank / Akku-Kühlbox', inv: 'Party-Kühlschrank/Akku-Kühlbox', p: [30, 40, 60, 80], k: 100, x: ['Langzeit: 4–6 Tage = 22 €/Tag', '7–13 Tage = 18 €/Tag · ab 14 Tage = 15 €/Tag'] },
+      { n: 'Glühweinkocher / Wasserkocher', inv: 'Glühweinkocher/Wasserkocher', p: [10, 15, 20, 25], k: 20 },
+      { n: 'kukki Cocktail-Toaster', inv: 'kukki Cocktail-Toaster', p: [25, 25, 40, 50], k: 50, note: 'Tiefgefrorene Cocktails in 20–30 Sek. servierfertig. Cocktails selbst nicht im Mietpreis enthalten, Abgabe nur ab 18 Jahren.', x: ['Cocktails auf Anfrage dazu erhältlich'] },
+      { n: 'Aperol Spritz Maschine', inv: 'Aperol Spritz Maschine', p: [25, 25, 40, 50], k: 50, note: 'Sprizzer mit 3 Kammern (Prosecco/Aperol/Soda), mischt automatisch 3:2:1, reicht für ca. 18–20 Gläser pro Füllung. Getränke & Eis nicht im Mietpreis enthalten.', x: ['Vorlage Lichtbildausweis erforderlich'] }
+    ] },
+    { cat: 'Mobiliar & Stehtische', short: 'Mobiliar', items: [
+      { n: 'Stehtisch (pro Tisch)', inv: 'Stehtisch', p: [8, 10, 12, 15], k: 20, kp: 'pro Stück', x: ['+ Hussen Paket (inkl. Reinigung): 7 €'] },
+      { n: 'Bierzeltgarnitur (1 Tisch & 2 Bänke)', inv: 'Bierzeltgarnitur', p: [8, 10, 12, 15], k: 20, kp: 'pro Stück' }
+    ] },
+    { cat: 'Spezialmaschinen', short: 'Maschinen', items: [
+      { n: 'Schneemaschine Snow', inv: 'Schneemaschine/Schaumkanone Snow', p: [40, 50, 70, 90], k: 50, x: ['+ Schnee Paket 1: 22 €'] },
+      { n: 'Nebelmaschine Fog / Fog Beamz', inv: 'Nebelmaschine Fog Beamz', p: [15, 20, 30, 40], k: 50, x: ['+ Nebel Paket 1: 10 €'] }
+    ] }
+  ];
+  const diffDays = (a, b) => Math.round((Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()) - Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
+  function matchTier(vs, bs) {
+    if (!vs) return -1; bs = bs || vs; if (bs < vs) bs = vs;
+    const d0 = parse(vs), n = diffDays(parse(bs), d0) + 1, dow = (d0.getDay() + 6) % 7;
+    if (n === 1) return dow <= 3 ? 0 : 1;
+    if (n === 2 && (dow === 4 || dow === 5)) return 2;
+    if (n === 3 && dow === 4) return 3;
+    return -1;
+  }
+  function availOf(it, vs, bs) {
+    if (!vs || !it.inv) return null;
+    const a = Avail.artByName(state.arts, it.inv);
+    if (!a) return null;
+    bs = bs || vs; if (bs < vs) { const t = vs; vs = bs; bs = t; }
+    const st = Avail.status(state.bookings, state.arts, a, vs, bs);
+    if (st.state === 'vergeben') return { c: 'no', t: 'vergeben' };
+    if (st.state === 'teils') return { c: 'mid', t: st.menge != null ? st.frei + ' von ' + st.menge + ' frei' : st.vergeben + ' vergeben' };
+    return { c: 'ok', t: 'frei' };
+  }
+  function priceCard(it, tier, av) {
+    return h('div', { class: 'pcard' },
+      h('div', { class: 'ptop' }, h('div', { class: 'pname' }, it.n), av ? h('span', { class: 'pav ' + av.c }, av.t) : null),
+      it.note ? h('div', { class: 'pextra' }, it.note) : null,
+      h('div', { class: 'ptiers' }, it.p.map((v, i) => h('div', { class: 'tier' + (i === tier ? ' hit' : '') }, h('small', {}, TIERS[i][0]), h('b', {}, v + ' €')))),
+      (it.x || []).map((x) => h('div', { class: 'pextra' }, x)),
+      h('span', { class: 'pk' }, 'Kaution ' + it.k + ' €' + (it.kp ? ' ' + it.kp : '')));
+  }
+  let priceEls = null;
+  function paintPrices() {
+    if (!priceEls) return;
+    const box = priceEls.pres, info = priceEls.pinfo;
+    box.textContent = ''; info.textContent = '';
+    const q = String(state.priceQ || '').trim().toLowerCase();
+    const vs = state.pvon, bs = state.pbis || state.pvon, tier = matchTier(vs, bs);
+    if (vs) {
+      const last = bs < vs ? vs : bs, n = diffDays(parse(last), parse(vs)) + 1;
+      info.append(h('div', { class: 'pinfo' }, h('b', {}, fmtD(vs) + (last !== vs ? ' – ' + fmtD(last) : '')),
+        ' · ' + n + (n === 1 ? ' Tag' : ' Tage') + ' · ', tier >= 0 ? TIERS[tier][1] : 'kein Standardpaket, Preis pro Tag bzw. nach Absprache'));
+    }
+    PRICES.forEach((g, gi) => {
+      const items = g.items.filter((it) => !q || (it.n + ' ' + g.cat + ' ' + (it.x || []).join(' ') + ' ' + (it.note || '')).toLowerCase().indexOf(q) > -1);
+      if (!items.length) return;
+      box.append(h('div', { class: 'pcat', id: 'pc-' + gi }, g.cat));
+      items.forEach((it) => box.append(priceCard(it, tier, availOf(it, vs, bs))));
+    });
+    if (!box.childNodes.length) box.append(h('div', { class: 'empty' }, 'Nichts gefunden.'));
+    box.append(h('div', { class: 'pcat' }, 'Allgemeine Hinweise'),
+      h('div', { class: 'phints' },
+        h('div', {}, h('b', {}, 'Mietzeit: '), '1 Tag = i. d. R. 9:00 – 21:00 Uhr'),
+        h('div', {}, h('b', {}, 'Pakete: '), 'Fr–Sa / Sa–So und Fr–So sind Wochenendpakete (Pauschalpreis)'),
+        h('div', {}, h('b', {}, 'Lieferung: '), 'Ruhrgebiet & Umgebung. Stehtische und Bierzeltgarnituren ab 6 Stück: 1 €/km · 4 Fahrten'),
+        h('div', {}, h('b', {}, 'Kaution: '), 'wird bei Rückgabe vollständig erstattet'),
+        h('div', {}, h('b', {}, 'Steuer: '), '§19 Abs. 1 UStG, keine Mehrwertsteuer'),
+        h('div', {}, h('b', {}, 'Kontakt: '), '0163 3865144 · info@muellers-mietxpress.de'),
+        h('div', { class: 'pextra' }, 'Preisliste 2026, Stand 10/2026')));
+  }
+  function viewPreise(main) {
+    priceEls = { pinfo: h('div', { id: 'pinfo' }), pres: h('div', { id: 'pres' }) };
+    const qi = h('input', { class: 'inp', type: 'search', placeholder: 'Produkt suchen …', value: state.priceQ || '', autocomplete: 'off',
+      oninput: (e) => { state.priceQ = e.target.value; paintPrices(); } });
+    const bis = h('input', { class: 'inp', type: 'date', value: state.pbis || '', onchange: (e) => { state.pbis = e.target.value; paintPrices(); } });
+    const von = h('input', { class: 'inp', type: 'date', value: state.pvon || '',
+      onchange: (e) => { state.pvon = e.target.value; if (state.pbis && state.pbis < state.pvon) { state.pbis = ''; bis.value = ''; } paintPrices(); } });
+    main.append(
+      h('div', { class: 'pfilter' }, qi,
+        h('div', { class: 'pdates3' },
+          h('label', {}, h('small', {}, 'Wunschtermin von'), von),
+          h('label', {}, h('small', {}, 'bis (optional)'), bis),
+          h('button', { class: 'btn sec', style: 'width:auto;padding:0 12px', onclick: () => { state.pvon = ''; state.pbis = ''; state.priceQ = ''; von.value = ''; bis.value = ''; qi.value = ''; paintPrices(); } }, 'Leeren'))),
+      h('div', { class: 'chips' }, PRICES.map((g, gi) => h('button', { onclick: () => { const e = document.getElementById('pc-' + gi); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, g.short))),
+      priceEls.pinfo, priceEls.pres);
+    paintPrices();
+  }
+
+  // ===== Nachrichten-Bausteine (WhatsApp / Kleinanzeigen) =====
+  const IBAN_TXT = 'DE85 1001 1001 2519 5253 66';
+  function timeDe(t) {
+    if (!t) return ''; const m = String(t).match(/^(\d{1,2}):(\d{2})$/); if (!m) return t;
+    const h0 = String(parseInt(m[1], 10));
+    return m[2] === '00' ? h0 + ' Uhr' : h0 + ':' + m[2] + ' Uhr';
+  }
+  const GEN = { 'Hüpfburg Schloss': 'die', 'Hüpfburg Kleines Schloss': 'die', 'Hüpfburg Slide': 'die', 'Hüpfburg Space': 'die', 'Popcornmaschine Star': 'die', 'Zuckerwattenmaschine Sweet': 'die', 'Slush Eis Maschine Ninja': 'die', 'Crepes Maschine Paris': 'die', 'Speisewärmer Eat': 'der', 'Glühweinkocher/Wasserkocher': 'der', 'PartyBox JBL 520': 'die', 'Nebelmaschine Fog Beamz': 'die', 'Schneemaschine/Schaumkanone Snow': 'die', 'LED Lichtanlage': 'die', 'DJ & Party Paket': 'das', 'Stehtisch': 'der', 'Bierzeltgarnitur': 'die', 'Party-Kühlschrank/Akku-Kühlbox': 'der', 'Aperol Spritz Maschine': 'die', 'kukki Cocktail-Toaster': 'der' };
+  const DISP = { 'Crepes Maschine Paris': 'Crêpes Maschine Paris', 'Schneemaschine/Schaumkanone Snow': 'Schneemaschine', 'Party-Kühlschrank/Akku-Kühlbox': 'Party-Kühlschrank', 'Glühweinkocher/Wasserkocher': 'Glühweinkocher', 'Speisewärmer Eat': 'Speisewärmer' };
+  function msgTexts(o) {
+    const sig = 'Thorsten Müller';
+    const dat = o.d ? pad(o.d.getDate()) + '.' + pad(o.d.getMonth() + 1) : '[DATUM]';
+    return {
+      avail: 'Hallo,\nja, ' + (o.art && GEN[o.art] ? GEN[o.art] + ' ' + (DISP[o.art] || o.art) + ' wäre' : 'das wäre') + ' da noch verfügbar.\n\nMit freundlichen Grüßen\n' + sig,
+      res: 'Hallo lieber Kunde,\nfür deine Reservierung überweise bitte 10 € per PayPal an info@muellers-mietxpress.de\nName und Mietdatum einfach im Betreff angeben.\nDanke! 😊\n\nMit freundlichen Grüßen\n' + sig,
+      best: 'Hallo lieber Kunde,\nvielen Dank für deine Buchung! ' +
+        (o.hasData ? '' : 'Für den Mietvertrag benötige ich noch deinen vollständigen Namen und deine Adresse. ') +
+        'Hier nochmal alle Infos auf einen Blick:\n' +
+        '📍 Abholadresse: Leveringhauser Str. 80, 44581 Castrop-Rauxel\n' +
+        '🕐 Abholzeit: ' + (o.ab ? timeDe(o.ab) : '[UHRZEIT]') + '\n' +
+        '📅 Datum: ' + dat + '\n' +
+        '🪪 Bitte mitbringen: Lichtbildausweis + Kaution (bar)\n\nBis dann! 😊\n' + sig,
+      bank: 'Hallo lieber Kunde,\nkein Problem, du kannst die 10 € für deine Reservierung auch per Überweisung senden:\nIBAN: ' + IBAN_TXT + '\nName und Mietdatum einfach im Verwendungszweck angeben.\nDanke! 😊\n\nMit freundlichen Grüßen\n' + sig
+    };
+  }
+  function buildMsgs(b) {
+    const hasData = !!(b.name && b.name.indexOf('(Name fehlt)') < 0 && b.adresse);
+    const m = msgTexts({ d: parse(b.start), ab: b.abholzeit, hasData });
+    return [
+      { t: '1. Reservierung (PayPal)', x: m.res },
+      { t: '2. Bestätigung mit Infos', x: m.best, hint: hasData ? 'Name und Adresse sind schon da, deshalb ohne Nachfrage.' : 'Name oder Adresse fehlen noch, deshalb mit Nachfrage.' },
+      { t: '3. Nur wenn kein PayPal: Überweisung', x: m.bank }
+    ];
+  }
+  function copyText(txt, ta) {
+    const ok = () => toast('Kopiert');
+    const fb = () => {
+      try { ta.focus(); ta.select(); ta.setSelectionRange(0, 99999); if (document.execCommand('copy')) ok(); else toast('Bitte Text markieren und kopieren'); }
+      catch (e) { toast('Bitte Text markieren und kopieren'); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, fb); else fb();
+  }
+  function closeMsgs() { const ov = document.getElementById('msgs'); if (ov) ov.remove(); }
+  function msgBlock(title, hint, ta) {
+    return h('div', { class: 'box' },
+      h('div', { class: 'ct' }, title),
+      hint ? h('div', { class: 'pextra', style: 'margin:0 0 6px' }, hint) : null,
+      ta,
+      h('button', { class: 'btn', style: 'margin-top:8px', onclick: () => copyText(ta.value, ta) }, 'Kopieren'));
+  }
+  function mkTa(text) {
+    const ta = document.createElement('textarea'); ta.className = 'inp mta'; ta.value = text; ta.rows = Math.min(14, text.split('\n').length + 2);
+    return ta;
+  }
+  function openMsgs(b) {
+    closeMsgs();
+    const blocks = buildMsgs(b).map((m) => msgBlock(m.t, m.hint, mkTa(m.x)));
+    document.body.append(h('div', { class: 'ov', id: 'msgs' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Nachricht'), h('button', { class: 'btn sec', onclick: closeMsgs }, 'Schließen')),
+      h('div', { class: 'pextra', style: 'margin:0 0 10px' }, (b.artikel || '') + ' · ' + (b.name && b.name.indexOf('(Name fehlt)') < 0 ? b.name : 'Name noch offen')),
+      blocks)));
+  }
+  function openMsgsGeneric() {
+    closeMsgs(); state.menu = false;
+    const tas = {};
+    const mk = (key, title, hint) => { tas[key] = mkTa(''); return msgBlock(title, hint, tas[key]); };
+    const dIn = h('input', { class: 'inp', type: 'date' });
+    const hSel = document.createElement('select'), mSel = document.createElement('select'); hSel.className = 'inp'; mSel.className = 'inp';
+    const o1 = document.createElement('option'); o1.value = ''; o1.textContent = 'Std.'; hSel.append(o1);
+    for (let hh = 0; hh < 24; hh++) { const o = document.createElement('option'); o.value = String(hh); o.textContent = pad(hh); hSel.append(o); }
+    const o2 = document.createElement('option'); o2.value = ''; o2.textContent = 'Min.'; mSel.append(o2);
+    ['00', '15', '30', '45'].forEach((mm) => { const o = document.createElement('option'); o.value = mm; o.textContent = mm; mSel.append(o); });
+    const tval = () => (hSel.value !== '' ? pad(parseInt(hSel.value, 10)) + ':' + (mSel.value || '00') : '');
+    const known = h('input', { type: 'checkbox' });
+    const sel = document.createElement('select'); sel.className = 'inp';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Produkt (optional)'; sel.append(o0);
+    Object.keys(GEN).forEach((k) => { const o = document.createElement('option'); o.value = k; o.textContent = DISP[k] || k; sel.append(o); });
+    function fill() {
+      const ds = dIn.value, m = msgTexts({ d: ds ? parse(ds) : null, ab: tval(), hasData: known.checked, art: sel.value });
+      Object.keys(m).forEach((k) => { if (tas[k]) { tas[k].value = m[k]; tas[k].rows = Math.min(14, m[k].split('\n').length + 2); } });
+    }
+    [sel, dIn, hSel, mSel, known].forEach((e) => e.addEventListener('change', fill));
+    document.body.append(h('div', { class: 'ov', id: 'msgs' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Nachricht'), h('button', { class: 'btn sec', onclick: closeMsgs }, 'Schließen')),
+      h('div', { class: 'box' }, h('div', { class: 'ct' }, 'Produkt, Datum und Uhrzeit (optional)'),
+        h('div', { style: 'margin-bottom:8px' }, sel),
+        h('div', { class: 'pdates' }, h('label', {}, h('small', {}, 'Datum'), dIn),
+          h('label', {}, h('small', {}, 'Abholzeit'), h('div', { style: 'display:flex;gap:6px' }, hSel, mSel))),
+        h('label', { class: 'calrow' }, known, h('span', {}, 'Name und Adresse sind schon bekannt'))),
+      mk('avail', '0. Anfrage: noch verfügbar'),
+      mk('res', '1. Reservierung (PayPal)'),
+      mk('best', '2. Bestätigung mit Infos', 'Ohne Datum und Zeit bleiben [DATUM] und [UHRZEIT] stehen.'),
+      mk('bank', '3. Nur wenn kein PayPal: Überweisung'))));
+    fill();
+  }
+
   // ===== Buchungen einfügen (z. B. von Claude vorbereitet: Text kopieren, hier einfügen) =====
   function openPaste() { state.menu = false; state.paste = { text: '', err: null }; render(); }
   function closePaste() { state.paste = null; render(); }
@@ -971,12 +1214,13 @@
     app.replaceChildren();
     const wrap = h('div', { class: 'wrap' });
     wrap.append(h('header', {},
-      h('div', { class: 'logo' }, h('i'), h('i'), h('i')),
+      h('img', { class: 'logoimg', src: 'logo.jpg', alt: 'müllers-MietXpress' }),
       h('h1', {}, 'MietXpress'),
       h('span', { class: 'net ' + (state.online ? 'on' : 'off') }, state.online ? 'Online' : 'Offline'),
+      h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
-    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['liste', 'Liste'], ['bestand', 'Bestand']].map((t) =>
+    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['liste', 'Liste'], ['bestand', 'Bestand'], ['preise', 'Preise']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
     if (state.ready && (state.dirty > 0 || (state.drive.id && !state.synced))) wrap.append(syncBanner());
@@ -990,6 +1234,7 @@
           h('button', { class: 'btn sec', onclick: async () => { await replaceData(demoData()); render(); } }, 'Mit Beispieldaten ausprobieren'))));
     } else if (state.view === 'monat') viewMonat(main);
     else if (state.view === 'liste') viewListe(main);
+    else if (state.view === 'preise') viewPreise(main);
     else viewBestand(main);
     wrap.append(main);
     if (state.ready && state.importAt) wrap.append(h('div', { class: 'stand' }, 'Datenstand: ' + new Date(state.importAt).toLocaleString('de-DE')));

@@ -123,7 +123,7 @@ const GCAL = (function () {
         if (ende < start) ende = start;
       }
     } else return null;
-    return { id: calId + ':' + ev.id, cal: calId, title: ev.summary || '(ohne Titel)', start, ende, zeit, ort: ev.location || '' };
+    return { id: calId + ':' + ev.id, cal: calId, title: ev.summary || '(ohne Titel)', start, ende, zeit, ort: ev.location || '', typ: ev.eventType || '' };
   }
 
   async function listEvents(calId, fromIso, toIso) {
