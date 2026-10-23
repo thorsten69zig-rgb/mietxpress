@@ -16,7 +16,8 @@
     von: '', bis: '',
     menu: false, online: navigator.onLine, importAt: null, ready: false,
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
-    drive: { id: null, at: null, busy: false, err: null, msg: null }
+    drive: { id: null, at: null, busy: false, err: null, msg: null },
+    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, delArm: null
   };
 
   // ===== Hilfsfunktionen =====
@@ -60,7 +61,7 @@
     const pos = Array.isArray(b.positionen) ? b.positionen.filter((p) => p && p.artikel) : null;
     const artText = b.artikel || (pos && pos.length
       ? pos.map((p) => (Number(p.anzahl) > 1 ? p.anzahl + '× ' : '') + p.artikel).join(', ') : '');
-    return {
+    return Object.assign({}, b, {
       id: String(b.id), name: b.name || '', adresse: b.adresse || '', telefon: b.telefon || '',
       plattform: b.plattform || '', artikel: artText, positionen: pos,
       start: start, ende: b.ende || start, zeit: b.zeit || '',
@@ -70,7 +71,7 @@
       status: b.status || 'bestaetigt', notiz: b.notiz || '',
       rechnung: b.rechnung || '', rechnungNr: b.rechnungNr || '',
       gcalEventId: b.gcalEventId || null, gcalSig: b.gcalSig || ''
-    };
+    });
   }
   function normArt(a, i) {
     return {
@@ -126,6 +127,11 @@
     const [did, dat] = await Promise.all([DB.getMeta('driveFileId'), DB.getMeta('driveAt')]);
     state.drive.id = did || null;
     state.drive.at = dat || null;
+    const [dirty, tomb, aAt, sAt] = await Promise.all([DB.getMeta('dirty'), DB.getMeta('tomb'), DB.getMeta('artikelAt'), DB.getMeta('sperrAt')]);
+    state.dirty = Number(dirty) || 0;
+    state.tomb = tomb || {};
+    state.artikelAt = aAt || null;
+    state.sperrAt = sAt || null;
     state.ready = true;
   }
 
@@ -150,7 +156,7 @@
       await GCAL.signIn();
       const cals = await GCAL.listCalendars();
       const keep = state.cal.sel.filter((id) => cals.some((c) => c.id === id));
-      state.cal.sel = keep.length ? keep : cals.map((c) => c.id);
+      state.cal.sel = keep.length ? keep : cals.map((c) => c.id); // alle Kalender, auch private
       state.cal.cals = cals;
       state.cal.connected = true;
       await DB.setMeta('gcalCals', cals);
@@ -168,6 +174,8 @@
     const i = state.cal.sel.indexOf(id);
     if (i > -1) state.cal.sel.splice(i, 1); else state.cal.sel.push(id);
     await DB.setMeta('gcalSel', state.cal.sel);
+    state.cal.events = state.cal.events.filter((ev) => state.cal.sel.indexOf(ev.cal) > -1);
+    await DB.setMeta('gcalEvents', state.cal.events);
     if (GCAL.isSignedIn()) {
       try { await fetchEvents(); } catch (e) { state.cal.err = e.message; }
     }
@@ -203,59 +211,88 @@
   const calColor = (id) => { const c = state.cal.cals.find((x) => x.id === id); return c ? c.color : '#6d28d9'; };
 
 
-  // ===== Google Drive: Hauptdaten sichern / laden =====
+  // ===== Google Drive: Hauptdaten abgleichen =====
+  const isDemoId = (id) => /^demo\d+$/.test(String(id));
   function payload() {
-    return { version: 1, gespeichert: new Date().toISOString(), buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre };
+    return {
+      version: 2, gespeichert: new Date().toISOString(),
+      buchungen: state.bookings.filter((b) => !isDemoId(b.id)), artikel: state.arts, sperrliste: state.sperre,
+      geloescht: state.tomb, artikelAt: state.artikelAt, sperrAt: state.sperrAt
+    };
   }
   async function setDrive(id, at) {
     state.drive.id = id; state.drive.at = at;
     await DB.setMeta('driveFileId', id);
     await DB.setMeta('driveAt', at);
   }
-  async function driveRemote() {
-    // gemerkte Datei zuerst, sonst suchen
-    const f = await GDRIVE.find();
-    return f;
+  async function applyMerged(m) {
+    await DB.replaceAll('buchungen', m.buchungen.map(norm));
+    await DB.replaceAll('artikel', m.artikel.map(normArt));
+    await DB.replaceAll('sperrliste', m.sperrliste);
+    await DB.setMeta('tomb', m.geloescht);
+    await DB.setMeta('artikelAt', m.artikelAt);
+    await DB.setMeta('sperrAt', m.sperrAt);
+    await load();
   }
-  async function driveSave(opts) {
+  // Abgleichen: Drive und dieses Gerät werden zusammengeführt, nichts wird blind überschrieben
+  async function driveSync() {
     const d = state.drive;
+    if (d.busy) return;
     d.busy = true; d.err = null; d.msg = null; render();
     try {
       await GCAL.signIn();
-      const remote = await driveRemote();
-      if (remote && !(opts && opts.force)) {
-        const newer = !d.at || remote.modified > d.at;
-        if (newer && !confirm('In Drive liegen Daten, die dieses Gerät noch nicht kennt (oder neuer sind). Mit den Daten dieses Geräts überschreiben?')) {
-          d.busy = false; render(); return;
-        }
+      const remote = await GDRIVE.find();
+      let rdata = null;
+      if (remote) {
+        rdata = await GDRIVE.download(remote.id);
+        if (!rdata || !Array.isArray(rdata.buchungen)) throw new Error('Die Drive-Datei hat ein unbekanntes Format.');
       }
-      const res = remote ? await GDRIVE.update(remote.id, payload()) : await GDRIVE.create(payload());
+      const m = GDRIVE.merge({
+        buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre,
+        geloescht: state.tomb, artikelAt: state.artikelAt, sperrAt: state.sperrAt
+      }, rdata);
+      await applyMerged(m);
+      let res = remote;
+      if (!remote) res = await GDRIVE.create(payload());
+      else if (m.upload) res = await GDRIVE.update(remote.id, payload());
       await setDrive(res.id, res.modified || new Date().toISOString());
-      d.msg = 'In Drive gesichert: ' + state.bookings.length + ' Buchungen';
-    } catch (e) { d.err = e.message || 'Fehler beim Sichern'; }
+      state.dirty = 0;
+      await DB.setMeta('dirty', 0);
+      const st = m.stat;
+      d.msg = 'Abgeglichen: ' + state.bookings.length + ' Buchungen (' + st.neu + ' neu aus Drive, ' + st.aktualisiert + ' aktualisiert, ' + st.geloescht + ' gelöscht). ' +
+        (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.'));
+    } catch (e) { d.err = e.message || 'Fehler beim Abgleichen'; }
     d.busy = false; render();
   }
+  // Wiederherstellen: lokale Daten komplett durch Drive ersetzen (z. B. neues iPhone)
   async function driveLoad() {
     const d = state.drive;
     d.busy = true; d.err = null; d.msg = null; render();
     try {
       await GCAL.signIn();
-      const remote = await driveRemote();
-      if (!remote) throw new Error('In Drive gibt es noch keine Daten. Erst "In Drive sichern".');
-      if ((state.bookings.length || state.arts.length) && !confirm('Lokale Daten werden durch die Daten aus Drive ersetzt. Fortfahren?')) {
+      const remote = await GDRIVE.find();
+      if (!remote) throw new Error('In Drive gibt es noch keine Daten. Erst "Mit Drive abgleichen".');
+      if ((state.bookings.length || state.arts.length) && !confirm('Lokale Daten (auch nicht abgeglichene Änderungen) werden durch die Daten aus Drive ersetzt. Fortfahren?')) {
         d.busy = false; render(); return;
       }
       const data = await GDRIVE.download(remote.id);
       if (!data || !Array.isArray(data.buchungen)) throw new Error('Die Drive-Datei hat ein unbekanntes Format.');
-      await replaceData(data);
+      await replaceData(data, { fromDrive: true });
       await setDrive(remote.id, remote.modified);
       d.msg = 'Aus Drive geladen: ' + state.bookings.length + ' Buchungen';
     } catch (e) { d.err = e.message || 'Fehler beim Laden'; }
     d.busy = false; render();
   }
 
-  async function replaceData(data) {
-    const bookings = (data.buchungen || []).map((b, i) => norm(Object.assign({ id: 'b' + i }, b)));
+  async function replaceData(data, opts) {
+    opts = opts || {};
+    const now = new Date().toISOString();
+    const oldIds = state.bookings.map((b) => b.id);
+    const bookings = (data.buchungen || []).map((b, i) => {
+      const n = norm(Object.assign({ id: 'b' + i }, b));
+      if (opts.stamp && !n.geaendert) n.geaendert = now;
+      return n;
+    });
     const arts = (data.artikel || []).map(normArt);
     const sperre = (data.sperrliste || []).map((e, i) => ({
       id: String(e.id || 's' + i), name: e.name || '', telefon: e.telefon || '', grund: e.grund || '', erstellt: e.erstellt || ''
@@ -263,7 +300,23 @@
     await DB.replaceAll('buchungen', bookings);
     await DB.replaceAll('artikel', arts);
     await DB.replaceAll('sperrliste', sperre);
-    await DB.setMeta('importAt', new Date().toISOString());
+    if (opts.stamp) {
+      // Datei-Import = bewusster Neustart: bisherige, nicht mehr enthaltene Buchungen bleiben gelöscht
+      const keep = new Set(bookings.map((b) => b.id));
+      const tomb = Object.assign({}, state.tomb);
+      keep.forEach((id) => { delete tomb[id]; });
+      oldIds.forEach((id) => { if (!keep.has(id) && !isDemoId(id)) tomb[id] = now; });
+      await DB.setMeta('tomb', tomb);
+      await DB.setMeta('artikelAt', now);
+      await DB.setMeta('sperrAt', now);
+      await DB.setMeta('dirty', 1);
+    } else if (opts.fromDrive) {
+      await DB.setMeta('tomb', data.geloescht || {});
+      await DB.setMeta('artikelAt', data.artikelAt || null);
+      await DB.setMeta('sperrAt', data.sperrAt || null);
+      await DB.setMeta('dirty', 0);
+    }
+    await DB.setMeta('importAt', now);
     await load();
   }
 
@@ -336,7 +389,8 @@
       row('Abholung', b.abholzeit), row('Rückgabe', b.rueckzeit),
       row('Quelle', b.plattform),
       b.kaution > 0 ? row('Kaution', eur(b.kaution) + ' (' + (KAUT[b.kautionStatus] || b.kautionStatus) + ')') : null,
-      row('Notiz', b.notiz)
+      row('Notiz', b.notiz),
+      actions(b)
     );
   }
 
@@ -483,13 +537,14 @@
   function driveBox() {
     const d = state.drive;
     const kids = [h('div', { class: 'ct' }, 'Google Drive (Hauptdaten)')];
-    kids.push(h('p', { class: 'hint' }, 'Deine Buchungen liegen als Datei in deinem eigenen Google Drive. So bleiben sie erhalten, auch wenn das iPhone kaputtgeht, und andere Geräte sehen dieselben Daten.'));
+    kids.push(h('p', { class: 'hint' }, 'Deine Buchungen liegen als Datei in deinem eigenen Google Drive. Beim Abgleichen werden Drive und dieses Gerät zusammengeführt: Neueres gewinnt pro Buchung, nichts wird blind überschrieben.'));
     kids.push(h('div', { class: 'row' }, h('span', {}, 'Zuletzt abgeglichen'), h('b', {}, d.at ? new Date(d.at).toLocaleString('de-DE') : 'noch nie')));
+    kids.push(h('div', { class: 'row' }, h('span', {}, 'Nicht abgeglichene Änderungen'), h('b', {}, state.dirty)));
     if (d.msg) kids.push(h('p', { class: 'hint' }, d.msg));
     if (d.err) kids.push(h('p', { class: 'err' }, d.err));
     kids.push(h('div', { class: 'stack' },
-      h('button', { class: 'btn', disabled: d.busy ? '' : null, onclick: () => driveSave() }, d.busy ? 'Bitte warten …' : 'In Drive sichern'),
-      h('button', { class: 'btn sec', disabled: d.busy ? '' : null, onclick: () => driveLoad() }, 'Aus Drive laden')));
+      h('button', { class: 'btn', disabled: d.busy ? '' : null, onclick: () => driveSync() }, d.busy ? 'Bitte warten …' : 'Mit Drive abgleichen'),
+      h('button', { class: 'btn sec', disabled: d.busy ? '' : null, onclick: () => driveLoad() }, 'Aus Drive laden (ersetzt lokal)')));
     return h('div', { class: 'box' }, kids);
   }
 
@@ -501,11 +556,11 @@
       try {
         const data = parseImport(await f.text());
         if (state.bookings.length && !confirm('Vorhandene lokale Daten werden durch die Datei ersetzt. Fortfahren?')) return;
-        await replaceData(data);
+        await replaceData(data, { stamp: true });
         state.menu = false;
         render();
         alert(state.bookings.length + ' Buchungen und ' + state.arts.length + ' Artikel geladen.');
-        if (GCAL.isSignedIn()) driveSave({ force: true });
+        if (GCAL.isSignedIn()) driveSync();
       } catch (err) {
         alert('Import fehlgeschlagen: ' + err.message);
       }
@@ -523,7 +578,7 @@
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: () => file.click() }, 'Daten aus Datei laden (JSON)'),
         h('button', { class: 'btn sec', onclick: () => download('mietxpress-daten-' + iso(new Date()) + '.json',
-          JSON.stringify({ version: 1, exportiert: new Date().toISOString(), buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre }, null, 1)) }, 'Backup speichern'),
+          JSON.stringify({ version: 2, exportiert: new Date().toISOString(), buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre, geloescht: state.tomb }, null, 1)) }, 'Backup speichern'),
         h('button', { class: 'btn sec', onclick: async () => {
           if (state.bookings.length && !confirm('Lokale Daten durch Beispieldaten ersetzen?')) return;
           await replaceData(demoData()); state.menu = false; render();
@@ -533,7 +588,229 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 4')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 5')));
+  }
+
+  // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
+  const PLAT_LIST = ['Kleinanzeigen', 'WhatsApp', 'SMS', 'Mail', 'Telefon', 'Sonstige'];
+  const toNum = (v) => Number(String(v == null ? '' : v).replace(',', '.').replace(/[^0-9.\-]/g, '')) || 0;
+  const nowIso = () => new Date().toISOString();
+  const newId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  async function markDirty() { state.dirty++; await DB.setMeta('dirty', state.dirty); }
+
+  async function saveBooking(b) {
+    const n = norm(Object.assign({}, b, { geaendert: nowIso() }));
+    await DB.put('buchungen', n);
+    if (state.tomb[n.id]) { delete state.tomb[n.id]; await DB.setMeta('tomb', state.tomb); }
+    await markDirty();
+    await load();
+    return n;
+  }
+  async function patchBooking(b, p) {
+    const extra = {};
+    if (p.status === 'storniert' && b.status !== 'storniert') extra.statusVorher = b.status;
+    await saveBooking(Object.assign({}, b, p, extra));
+    render();
+  }
+  async function removeBooking(b) {
+    await DB.remove('buchungen', b.id);
+    state.tomb[b.id] = nowIso();
+    await DB.setMeta('tomb', state.tomb);
+    await markDirty();
+    await load();
+    render();
+    toast('Gelöscht: ' + (b.name || b.artikel || 'Buchung'), async () => { await saveBooking(b); render(); });
+  }
+  function toast(msg, undoFn) {
+    const t = h('div', { class: 'toast' }, h('span', {}, msg));
+    if (undoFn) t.append(h('button', { onclick: () => { t.remove(); undoFn(); } }, 'Rückgängig'));
+    document.body.append(t);
+    setTimeout(() => { if (t.parentNode) t.remove(); }, undoFn ? 10000 : 2600);
+  }
+
+  function actions(b) {
+    const stop = (e) => e.stopPropagation();
+    const rest = Math.max(0, b.preis - b.anzahlung);
+    const delClick = (ev) => {
+      const btn = ev.currentTarget;
+      if (state.delArm !== b.id) {
+        state.delArm = b.id;
+        btn.textContent = 'Wirklich löschen? Nochmal tippen';
+        btn.classList.add('armed');
+        setTimeout(() => { if (state.delArm === b.id) { state.delArm = null; if (btn.isConnected) { btn.textContent = 'Buchung löschen'; btn.classList.remove('armed'); } } }, 4000);
+        return;
+      }
+      state.delArm = null;
+      removeBooking(b);
+    };
+    return h('div', { class: 'acts', onclick: stop },
+      h('div', { class: 'arow' }, Object.keys(STATUS).map((k) =>
+        h('button', { class: b.status === k ? 'on' : '', onclick: () => patchBooking(b, { status: k }) }, STATUS[k]))),
+      rest > 0 ? h('div', { class: 'arow' }, h('button', { onclick: () => patchBooking(b, { anzahlung: b.preis }) }, 'Restbetrag ' + eur(rest) + ' erhalten')) : null,
+      b.kaution > 0 ? h('div', { class: 'arow' }, ['offen', 'erhalten', 'zurueck'].map((k) =>
+        h('button', { class: b.kautionStatus === k ? 'on' : '', onclick: () => patchBooking(b, { kautionStatus: k }) }, 'Kaution ' + KAUT[k].toLowerCase()))) : null,
+      h('div', { class: 'arow' },
+        h('button', { onclick: () => openEdit(b) }, 'Bearbeiten'),
+        h('button', { class: 'del', onclick: delClick }, 'Buchung löschen')));
+  }
+
+  function openEdit(b) {
+    const base = iso(today0());
+    const d = b ? JSON.parse(JSON.stringify(b)) : {
+      id: null, name: '', telefon: '', adresse: '', plattform: 'Sonstige',
+      start: state.sel || base, ende: state.sel || base, abholzeit: '', rueckzeit: '',
+      positionen: [], preis: 0, anzahlung: 0, kaution: 0, kautionStatus: 'keine',
+      status: 'bestaetigt', notiz: '', erstellt: base
+    };
+    if (!d.positionen || !d.positionen.length) {
+      d.positionen = d.id ? Avail.positionsOf(d, state.arts).map((p) => ({ artikel: p.artikel, anzahl: p.anzahl })) : [];
+    }
+    if (d.abholzeit == null) d.abholzeit = '';
+    state.edit = { d, orig: b ? b.status : null, err: null, warnEl: null };
+    render();
+  }
+  function closeEdit() { state.edit = null; render(); }
+
+  // Hinweise (blockieren nicht): Bestand reicht nicht, Paket gesperrt, gesperrter Kunde
+  function editWarnings(d) {
+    const w = [];
+    if (d.status === 'storniert' || !d.start || !d.ende || d.ende < d.start) return w;
+    const others = state.bookings.filter((b) => b.id !== d.id);
+    const names = (hits) => hits.map((x) => x.b.name || '?').filter((v, i, a) => a.indexOf(v) === i).join(', ');
+    d.positionen.forEach((p) => {
+      const a = Avail.artByName(state.arts, p.artikel);
+      if (!a) return;
+      const need = Number(p.anzahl) || 1;
+      const st = Avail.status(others, state.arts, a, d.start, d.ende);
+      if (st.blocked) w.push(p.artikel + ': gesperrt, weil ein Bestandteil gebucht ist (' + names(st.hits) + ')');
+      else if (a.menge != null && st.vergeben + need > a.menge) {
+        w.push(p.artikel + ': nur ' + Math.max(0, a.menge - st.vergeben) + ' frei, ' + need + ' gewünscht' + (st.hits.length ? ' (belegt von ' + names(st.hits) + ')' : ''));
+      }
+      (a.enthaelt || []).forEach((c) => {
+        const ca = Avail.artByName(state.arts, c.artikel);
+        if (!ca || ca.menge == null) return;
+        const cs = Avail.status(others, state.arts, ca, d.start, d.ende);
+        const cn = (Number(c.anzahl) || 1) * need;
+        if (cs.vergeben + cn > ca.menge) w.push(p.artikel + ' enthält ' + c.artikel + ': nur ' + Math.max(0, ca.menge - cs.vergeben) + ' frei, ' + cn + ' nötig');
+      });
+    });
+    const sp = sperrMatch(d);
+    if (sp) w.push('🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : ''));
+    return w;
+  }
+  function paintWarn() {
+    const e = state.edit;
+    if (!e || !e.warnEl) return;
+    const w = editWarnings(e.d);
+    e.warnEl.replaceChildren(...w.map((t) => h('div', {}, '⚠ ' + t)));
+    e.warnEl.style.display = w.length ? '' : 'none';
+  }
+  function paintEdit() {
+    const old = document.getElementById('editov');
+    const y = old ? old.scrollTop : 0;
+    const nu = viewEdit();
+    if (old) old.replaceWith(nu);
+    nu.scrollTop = y;
+  }
+
+  async function saveEdit() {
+    const e = state.edit, d = e.d;
+    d.positionen = d.positionen.filter((p) => p.artikel);
+    e.err = null;
+    if (!d.start) e.err = 'Bitte ein Startdatum wählen.';
+    else if (!d.ende || d.ende < d.start) e.err = 'Die Rückgabe liegt vor der Abholung.';
+    else if (!String(d.name).trim() && !String(d.telefon).trim()) e.err = 'Bitte Name oder Telefon eintragen.';
+    else if (!d.positionen.length && !String(d.artikel || '').trim()) e.err = 'Bitte mindestens einen Artikel wählen.';
+    if (e.err) { paintEdit(); return; }
+    const w = editWarnings(d);
+    if (w.length && !confirm('Achtung:\n' + w.join('\n') + '\n\nTrotzdem speichern?')) return;
+    const b = Object.assign({}, d, {
+      id: d.id || newId(), name: String(d.name).trim(), telefon: String(d.telefon).trim(), adresse: String(d.adresse || '').trim(),
+      preis: toNum(d.preis), anzahlung: toNum(d.anzahlung), kaution: toNum(d.kaution),
+      artikel: d.positionen.length ? '' : String(d.artikel || '').trim(),
+      positionen: d.positionen.length ? d.positionen.map((p) => ({ artikel: p.artikel, anzahl: Number(p.anzahl) || 1 })) : null,
+      erstellt: d.erstellt || iso(today0())
+    });
+    if (b.kaution > 0 && (!b.kautionStatus || b.kautionStatus === 'keine')) b.kautionStatus = 'offen';
+    if (!(b.kaution > 0)) b.kautionStatus = 'keine';
+    if (b.status === 'storniert' && e.orig && e.orig !== 'storniert') b.statusVorher = e.orig;
+    const saved = await saveBooking(b);
+    state.edit = null;
+    state.sel = saved.start;
+    state.cursor = new Date(parse(saved.start).getFullYear(), parse(saved.start).getMonth(), 1);
+    state.open[saved.id] = true;
+    render();
+    toast('Gespeichert');
+  }
+
+  function viewEdit() {
+    const e = state.edit, d = e.d;
+    const fld = (label, el, cls) => h('label', { class: 'fld' + (cls ? ' ' + cls : '') }, h('small', {}, label), el);
+    const txt = (key, extra) => h('input', Object.assign({
+      class: 'inp', type: 'text', value: d[key] == null ? '' : String(d[key]),
+      oninput: (ev) => { d[key] = ev.target.value; if (key === 'name' || key === 'telefon') paintWarn(); }
+    }, extra || {}));
+    const date = (key) => h('input', { class: 'inp', type: 'date', value: d[key] || '', onchange: (ev) => { d[key] = ev.target.value; if (key === 'start' && (!d.ende || d.ende < d.start)) { d.ende = d.start; paintEdit(); return; } paintWarn(); } });
+    const time = (key) => h('input', { class: 'inp', type: 'time', value: d[key] || '', onchange: (ev) => { d[key] = ev.target.value; } });
+    const sel = (key, opts, onch) => h('select', { class: 'inp', onchange: (ev) => { d[key] = ev.target.value; if (onch) onch(); } },
+      opts.map((o) => h('option', { value: o[0], selected: String(d[key]) === o[0] ? '' : null }, o[1])));
+    const plats = PLAT_LIST.slice();
+    if (d.plattform && plats.indexOf(d.plattform) < 0) plats.push(d.plattform);
+
+    const warnEl = h('div', { class: 'warnbox', style: 'display:none' });
+    e.warnEl = warnEl;
+
+    const prow = d.positionen.map((p, i) => {
+      const names = state.arts.map((a) => a.name);
+      if (p.artikel && names.indexOf(p.artikel) < 0) names.push(p.artikel);
+      return h('div', { class: 'prow' },
+        h('select', { class: 'inp', onchange: (ev) => { p.artikel = ev.target.value; paintWarn(); } },
+          [h('option', { value: '' }, 'Artikel wählen …')].concat(names.map((n) => h('option', { value: n, selected: n === p.artikel ? '' : null }, n)))),
+        h('input', { class: 'inp num', type: 'number', min: '1', inputmode: 'numeric', value: String(p.anzahl || 1),
+          oninput: (ev) => { p.anzahl = Math.max(1, parseInt(ev.target.value, 10) || 1); paintWarn(); } }),
+        h('button', { class: 'x', 'aria-label': 'Artikel entfernen', onclick: () => { d.positionen.splice(i, 1); paintEdit(); } }, '✕'));
+    });
+
+    const root = h('div', { class: 'ov', id: 'editov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' },
+        h('h2', {}, d.id ? 'Buchung ändern' : 'Neue Buchung'),
+        h('div', { class: 'two' },
+          h('button', { class: 'btn sec', onclick: closeEdit }, 'Abbrechen'),
+          h('button', { class: 'btn', onclick: saveEdit }, 'Speichern'))),
+      e.err ? h('div', { class: 'warnbox err2' }, e.err) : null,
+      h('div', { class: 'box' },
+        fld('Name', txt('name', { autocomplete: 'off' })),
+        fld('Telefon', txt('telefon', { type: 'tel', inputmode: 'tel' })),
+        fld('Adresse', txt('adresse')),
+        fld('Quelle', sel('plattform', plats.map((x) => [x, x])))),
+      h('div', { class: 'box' },
+        h('div', { class: 'pdates' }, fld('Abholung (Datum)', date('start')), fld('Rückgabe (Datum)', date('ende'))),
+        h('div', { class: 'pdates' }, fld('Abholzeit', time('abholzeit')), fld('Rückgabezeit', time('rueckzeit')))),
+      h('div', { class: 'box' },
+        h('div', { class: 'ct' }, 'Artikel'),
+        prow,
+        h('button', { class: 'btn sec', onclick: () => { d.positionen.push({ artikel: '', anzahl: 1 }); paintEdit(); } }, '+ Artikel hinzufügen'),
+        warnEl),
+      h('div', { class: 'box' },
+        h('div', { class: 'pdates' }, fld('Preis (€)', txt('preis', { inputmode: 'decimal' })), fld('Anzahlung (€)', txt('anzahlung', { inputmode: 'decimal' }))),
+        h('div', { class: 'pdates' }, fld('Kaution (€)', txt('kaution', { inputmode: 'decimal' })),
+          fld('Kaution-Status', sel('kautionStatus', [['keine', 'Keine'], ['offen', 'Offen'], ['erhalten', 'Erhalten'], ['zurueck', 'Zurückgegeben']]))),
+        fld('Status', sel('status', Object.keys(STATUS).map((k) => [k, STATUS[k]]), paintWarn))),
+      h('div', { class: 'box' }, fld('Notiz', h('textarea', { class: 'inp', rows: '3', oninput: (ev) => { d.notiz = ev.target.value; } }, d.notiz || ''))),
+      h('div', { class: 'stack' },
+        h('button', { class: 'btn', onclick: saveEdit }, 'Speichern'),
+        h('button', { class: 'btn sec', onclick: closeEdit }, 'Abbrechen'))));
+    setTimeout(paintWarn, 0);
+    return root;
+  }
+
+  function syncBanner() {
+    const d = state.drive;
+    return h('div', { class: 'sync' },
+      h('span', {}, state.dirty + (state.dirty === 1 ? ' Änderung' : ' Änderungen') + ' noch nicht in Drive' + (d.err ? ' – ' + d.err : '')),
+      h('button', { class: 'btn', disabled: (d.busy || !state.online) ? '' : null, onclick: () => driveSync() },
+        d.busy ? '…' : (state.online ? 'Abgleichen' : 'Offline')));
   }
 
   // ===== Rendern =====
@@ -546,10 +823,12 @@
       h('div', { class: 'logo' }, h('i'), h('i'), h('i')),
       h('h1', {}, 'MietXpress'),
       h('span', { class: 'net ' + (state.online ? 'on' : 'off') }, state.online ? 'Online' : 'Offline'),
+      h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
     wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['liste', 'Liste'], ['bestand', 'Bestand']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
+    if (state.ready && state.dirty > 0) wrap.append(syncBanner());
     const main = h('main');
     if (!state.ready) main.append(h('div', { class: 'empty' }, 'Lade …'));
     else if (!state.bookings.length && !state.arts.length) {
@@ -565,6 +844,7 @@
     if (state.ready && state.importAt) wrap.append(h('div', { class: 'stand' }, 'Datenstand: ' + new Date(state.importAt).toLocaleString('de-DE')));
     app.append(wrap);
     if (state.menu) app.append(viewMenu());
+    if (state.edit) app.append(viewEdit());
     window.scrollTo(0, y);
   }
 

@@ -117,3 +117,32 @@ h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5p
 .calrow i{width:10px;height:10px;border-radius:50%;flex:none}
 .btn:disabled{opacity:.6}
 .box + .box,.box + .stack{margin-top:10px}
+
+/* Bearbeiten */
+.iconbtn + .iconbtn{margin-left:2px}
+.acts{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.arow{display:flex;flex-wrap:wrap;gap:6px}
+.arow button{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:7px 12px;font-size:13px}
+.arow button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.arow button.del{color:var(--accent);border-color:var(--accent);margin-left:auto}
+.arow button.del.armed{background:var(--accent);color:#fff}
+.toast{position:fixed;left:14px;right:14px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:60;background:var(--navy);color:#fff;
+  padding:10px 14px;border-radius:14px;font-size:14px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+.toast button{border:0;background:var(--yellow);color:var(--navy);font-weight:700;border-radius:9px;padding:8px 14px}
+.sync{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(247,201,63,.22);border:1px solid var(--yellow);
+  border-radius:12px;padding:8px 10px 8px 12px;margin-bottom:12px;font-size:13.5px}
+.sync .btn{padding:8px 12px;white-space:nowrap}
+.fld{display:block;margin-bottom:10px}
+.fld small{display:block;font-size:11px;color:var(--muted);margin:0 2px 3px}
+.box .fld:last-child{margin-bottom:0}
+textarea.inp{resize:vertical;font-family:inherit}
+select.inp{appearance:auto}
+.prow{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.prow select{flex:1;min-width:0}
+.prow .num{width:64px;flex:none;text-align:center}
+.prow .x{border:1px solid var(--line);background:var(--card);border-radius:10px;width:40px;height:42px;flex:none;color:var(--accent)}
+.warnbox{background:rgba(240,82,45,.12);border:1px solid var(--accent);color:var(--text);border-radius:12px;padding:9px 12px;margin:10px 0;font-size:13.5px}
+.warnbox div + div{margin-top:4px}
+.warnbox.err2{background:var(--accent);color:#fff}
+.two{display:flex;gap:6px}
+.two .btn{padding:9px 12px}
