@@ -493,6 +493,34 @@
     return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')));
   }
 
+  // Monat auf einen Bildschirm einpassen: Kachelhöhe fest, Detailgrad je Tag so hoch wie möglich, Rest als „+n"
+  function fitGrid(grid, rows) {
+    const run = () => {
+      if (!grid.isConnected) return;
+      const top = grid.getBoundingClientRect().top + window.scrollY;
+      const H = Math.max(rows * 74 + 20, window.innerHeight - top - 8);
+      grid.style.height = H + 'px';
+      grid.style.gridTemplateRows = 'auto repeat(' + rows + ', minmax(0, 1fr))';
+      grid.querySelectorAll('.day').forEach((cell) => {
+        const over = () => cell.scrollHeight > cell.clientHeight + 1;
+        const chips = [...cell.querySelectorAll('.pc')];
+        cell.querySelectorAll('.more').forEach((m) => m.remove());
+        chips.forEach((c) => { c.style.display = ''; });
+        let lvl = 0;
+        for (; lvl <= 3; lvl++) { cell.dataset.l = lvl; if (!over()) break; }
+        if (lvl > 3) {
+          cell.dataset.l = 3;
+          const m = h('div', { class: 'more' }, '');
+          cell.append(m);
+          let hid = 0;
+          for (let i = chips.length - 1; i > 0 && over(); i--) { chips[i].style.display = 'none'; hid++; m.textContent = '+' + hid; }
+          if (!hid) m.remove();
+        }
+      });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
+    if (!state.fitBound) { state.fitBound = true; window.addEventListener('resize', () => { if (state.view === 'monat') render(); }); }
+  }
   function shortArt(t) {
     const p = String(t).split(/\s*[,+&]\s*|\s+und\s+/).filter(Boolean);
     return p.length > 1 ? p[0] + ' +' + (p.length - 1) : p[0] || '';
@@ -525,7 +553,7 @@
       const d = addDays(start, i), ds = iso(d), list = map[ds] || [], evs = (ems[ds] || []).slice().sort(byKind);
       const bShown = list.length;
       const eShown = evs.length;
-      const more = list.length + evs.length - bShown - eShown;
+      const more = 0;
       grid.append(h('button', {
         class: 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === ts ? ' today' : '') + (ds === state.sel ? ' sel' : ''),
         onclick: () => { state.sel = ds; render(); }
@@ -543,6 +571,7 @@
         more > 0 ? h('div', { class: 'more' }, '+' + more) : null));
     }
     main.append(grid);
+    fitGrid(grid, rows);
 
     const sel = (map[state.sel] || []).slice().sort(sortByStart);
     main.append(h('h3', {}, fmtFull(state.sel)));
@@ -695,7 +724,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 14')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 15')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
