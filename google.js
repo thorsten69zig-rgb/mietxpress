@@ -3,7 +3,7 @@
    App offline sofort startet. Der Zugriff ist nur lesend (calendar.readonly). */
 const GCAL = (function () {
   const CLIENT_ID = '780465482026-0kj6jjln8md7c96hiphjvs0tom5k8fg9.apps.googleusercontent.com';
-  const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file';
+  const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
   const API = 'https://www.googleapis.com/calendar/v3';
   const PALETTE = ['#6d28d9', '#0f766e', '#b58900', '#2b6cb0', '#be123c', '#047857', '#9333ea', '#c2410c'];
 

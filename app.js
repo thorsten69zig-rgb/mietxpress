@@ -17,7 +17,7 @@
     menu: false, online: navigator.onLine, importAt: null, ready: false,
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
     drive: { id: null, at: null, busy: false, err: null, msg: null },
-    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, delArm: null,
+    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, delArm: null,
     calWrite: false, calDel: []
   };
 
@@ -269,6 +269,11 @@
     d.busy = true; d.err = null; d.msg = null; render();
     try {
       await GCAL.signIn();
+      let inboxMsg = '';
+      try {
+        const ib = await processInbox();
+        if (ib.dateien) inboxMsg = ' Eingang: ' + ib.neu + ' neu, ' + ib.geaendert + ' geändert' + (ib.weg ? ', ' + ib.weg + ' gelöscht' : '') + '.' + (ib.warn.length ? ' Hinweise: ' + ib.warn.join('; ') : '');
+      } catch (e) { inboxMsg = ' Eingang nicht gelesen (' + (e.message || 'Fehler') + ').'; }
       const remote = await GDRIVE.find();
       let rdata = null;
       if (remote) {
@@ -303,7 +308,7 @@
         }
       } catch (e) { d.err = 'Kalender: ' + (e.message || 'Fehler'); }
       d.msg = 'Abgeglichen: ' + state.bookings.length + ' Buchungen (' + st.neu + ' neu aus Drive, ' + st.aktualisiert + ' aktualisiert, ' + st.geloescht + ' gelöscht). ' +
-        (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.')) + calMsg;
+        (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.')) + inboxMsg + calMsg;
     } catch (e) { d.err = e.message || 'Fehler beim Abgleichen'; }
     d.busy = false; render();
   }
@@ -626,7 +631,8 @@
       googleBox(),
       driveBox(),
       h('div', { class: 'stack' },
-        h('button', { class: 'btn', onclick: () => file.click() }, 'Daten aus Datei laden (JSON)'),
+        h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
+        h('button', { class: 'btn sec', onclick: () => file.click() }, 'Alle Daten aus Datei laden (ersetzt alles)'),
         h('button', { class: 'btn sec', onclick: () => download('mietxpress-daten-' + iso(new Date()) + '.json',
           JSON.stringify({ version: 2, exportiert: new Date().toISOString(), buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre, geloescht: state.tomb }, null, 1)) }, 'Backup speichern'),
         h('button', { class: 'btn sec', onclick: async () => {
@@ -638,7 +644,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 6')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 8')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -857,6 +863,91 @@
     return root;
   }
 
+  // ===== Buchungen einfügen (z. B. von Claude vorbereitet: Text kopieren, hier einfügen) =====
+  function openPaste() { state.menu = false; state.paste = { text: '', err: null }; render(); }
+  function closePaste() { state.paste = null; render(); }
+  function parsePasted(text) {
+    let t = String(text || '').trim().replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
+    if (!t) throw new Error('Bitte den Text einfügen.');
+    let j;
+    try { j = JSON.parse(t); } catch (e) { throw new Error('Der Text ist kein gültiges Buchungs-Format (JSON). Bitte genau den kopierten Text einfügen.'); }
+    const list = Array.isArray(j) ? j : (j && Array.isArray(j.buchungen) ? j.buchungen : (j && typeof j === 'object' ? [j] : []));
+    if (!list.length) throw new Error('Keine Buchungen im Text gefunden.');
+    return prepItems(list);
+  }
+  function prepItems(list) {
+    return list.map((o, i) => {
+      if (!o || typeof o !== 'object') throw new Error('Eintrag ' + (i + 1) + ' ist keine Buchung.');
+      const old = o.id ? state.bookings.find((b) => b.id === String(o.id)) : null;
+      const merged = Object.assign({}, old || { erstellt: iso(today0()), status: 'bestaetigt' }, o);
+      if (!old && !o.id) merged.id = newId();
+      if (!merged.start) throw new Error('Eintrag ' + (i + 1) + ' (' + (merged.name || '?') + '): Startdatum fehlt.');
+      if (!merged.ende) merged.ende = merged.start;
+      if (merged.ende < merged.start) throw new Error('Eintrag ' + (i + 1) + ' (' + (merged.name || '?') + '): Rückgabe liegt vor der Abholung.');
+      if (o.positionen && !o.artikel) merged.artikel = '';
+      return { b: merged, isNew: !old };
+    });
+  }
+  async function savePaste() {
+    const e = state.paste;
+    e.err = null;
+    let items;
+    try { items = parsePasted(e.text); } catch (err) { e.err = err.message; paintPaste(); return; }
+    const warn = [];
+    items.forEach((it) => {
+      const d = Object.assign({}, it.b, { positionen: (it.b.positionen || Avail.positionsOf(it.b, state.arts)).map((p) => ({ artikel: p.artikel, anzahl: p.anzahl })) });
+      editWarnings(d).forEach((w) => warn.push((it.b.name || 'Buchung') + ': ' + w));
+    });
+    if (warn.length && !confirm('Achtung:\n' + warn.join('\n') + '\n\nTrotzdem übernehmen?')) return;
+    let first = null;
+    for (const it of items) { const n = await saveBooking(it.b); if (!first) first = n; }
+    state.paste = null;
+    if (first) { state.sel = first.start; state.cursor = new Date(parse(first.start).getFullYear(), parse(first.start).getMonth(), 1); state.view = 'monat'; }
+    render();
+    toast(items.filter((x) => x.isNew).length + ' neu, ' + items.filter((x) => !x.isNew).length + ' geändert');
+  }
+  function paintPaste() {
+    const old = document.getElementById('pasteov');
+    if (old) old.replaceWith(viewPaste());
+  }
+  function viewPaste() {
+    const e = state.paste;
+    return h('div', { class: 'ov', id: 'pasteov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Buchungen einfügen'),
+        h('button', { class: 'btn sec', onclick: closePaste }, 'Abbrechen')),
+      h('p', { class: 'hint' }, 'Hier den Text einfügen, den Claude dir zum Kopieren gegeben hat. Neue Buchungen werden angelegt, vorhandene (gleiche ID) werden aktualisiert. Bestand und Sperrliste werden geprüft.'),
+      e.err ? h('div', { class: 'warnbox err2' }, e.err) : null,
+      h('textarea', { class: 'inp', rows: '12', placeholder: 'Text hier einfügen …', oninput: (ev) => { e.text = ev.target.value; } }, e.text),
+      h('div', { class: 'stack', style: 'margin-top:10px' },
+        h('button', { class: 'btn', onclick: savePaste }, 'Hinzufügen'))));
+  }
+
+  // ===== Eingang: Claude legt Dateien "mietxpress-eingang-….json" in Drive, die App übernimmt sie beim Abgleich =====
+  async function processInbox() {
+    const done = (await DB.getMeta('eingangDone')) || [];
+    const files = await GDRIVE.listInbox();
+    const fresh = files.filter((f) => done.indexOf(f.id) < 0).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    let neu = 0, geaendert = 0, weg = 0; const warn = [];
+    for (const f of fresh) {
+      let j;
+      try { j = await GDRIVE.download(f.id); } catch (e) { warn.push(f.name + ': nicht lesbar'); continue; }
+      const list = Array.isArray(j) ? j : (j && Array.isArray(j.buchungen) ? j.buchungen : []);
+      const del = j && Array.isArray(j.loeschen) ? j.loeschen.map(String) : [];
+      try {
+        for (const it of prepItems(list)) {
+          const d = Object.assign({}, it.b, { positionen: (it.b.positionen || Avail.positionsOf(it.b, state.arts)).map((p) => ({ artikel: p.artikel, anzahl: p.anzahl })) });
+          editWarnings(d).forEach((w) => warn.push((it.b.name || 'Buchung') + ': ' + w));
+          await saveBooking(it.b);
+          if (it.isNew) neu++; else geaendert++;
+        }
+        for (const id of del) { const b = state.bookings.find((x) => x.id === id); if (b) { await removeBooking(b); weg++; } }
+      } catch (e) { warn.push(f.name + ': ' + e.message); continue; }
+      done.push(f.id);
+    }
+    await DB.setMeta('eingangDone', done.slice(-200));
+    return { neu, geaendert, weg, warn, dateien: fresh.length };
+  }
+
   function syncBanner() {
     const d = state.drive;
     return h('div', { class: 'sync' },
@@ -897,6 +988,7 @@
     app.append(wrap);
     if (state.menu) app.append(viewMenu());
     if (state.edit) app.append(viewEdit());
+    if (state.paste) app.append(viewPaste());
     window.scrollTo(0, y);
   }
 

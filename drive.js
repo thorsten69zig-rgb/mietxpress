@@ -20,6 +20,15 @@ const GDRIVE = (function () {
     return j.files && j.files[0] ? { id: j.files[0].id, modified: j.files[0].modifiedTime } : null;
   }
 
+  // Eingangsdateien von Claude (Scope drive.readonly nötig, damit die App Dateien anderer Herkunft sieht)
+  async function listInbox() {
+    const q = "name contains 'mietxpress-eingang' and trashed=false";
+    const url = FILES + '?q=' + encodeURIComponent(q) + '&spaces=drive&orderBy=createdTime&pageSize=100&fields=files(id,name)';
+    const res = await check(await GCAL.authFetch(url), 'Eingang');
+    const j = await res.json();
+    return j.files || [];
+  }
+
   async function download(id) {
     const res = await check(await GCAL.authFetch(FILES + '/' + encodeURIComponent(id) + '?alt=media'), 'Laden');
     return res.json();
@@ -100,6 +109,6 @@ const GDRIVE = (function () {
       artikelAt: art.at, sperrAt: sp.at, stat, upload };
   }
 
-  return { NAME, find, download, create, update, merge };
+  return { NAME, find, listInbox, download, create, update, merge };
 
 })();
