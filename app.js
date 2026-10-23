@@ -18,7 +18,7 @@
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
     drive: { id: null, at: null, busy: false, err: null, msg: null },
     dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, delArm: null,
-    calWrite: false, calDel: []
+    calWrite: false, calDel: [], synced: false, autoAt: 0
   };
 
   // ===== Hilfsfunktionen =====
@@ -263,12 +263,15 @@
   }
 
   // Abgleichen: Drive und dieses Gerät werden zusammengeführt, nichts wird blind überschrieben
-  async function driveSync() {
+  // auto = stiller Versuch beim Öffnen: klappt nur, wenn iOS das Anmeldefenster ohne Fingertipp zulässt; sonst bleibt der Knopf oben
+  async function driveSync(auto) {
     const d = state.drive;
     if (d.busy) return;
     d.busy = true; d.err = null; d.msg = null; render();
     try {
-      await GCAL.signIn();
+      if (auto === true) {
+        await Promise.race([GCAL.signIn(), new Promise((_, rej) => setTimeout(() => rej(new Error('auto')), 8000))]);
+      } else await GCAL.signIn();
       let inboxMsg = '';
       try {
         const ib = await processInbox();
@@ -309,12 +312,14 @@
       } catch (e) { d.err = 'Kalender: ' + (e.message || 'Fehler'); }
       d.msg = 'Abgeglichen: ' + state.bookings.length + ' Buchungen (' + st.neu + ' neu aus Drive, ' + st.aktualisiert + ' aktualisiert, ' + st.geloescht + ' gelöscht). ' +
         (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.')) + inboxMsg + calMsg;
-    } catch (e) { d.err = e.message || 'Fehler beim Abgleichen'; }
+      state.synced = true;
+    } catch (e) { d.err = auto === true ? null : (e.message || 'Fehler beim Abgleichen'); }
     d.busy = false; render();
   }
   // Wiederherstellen: lokale Daten komplett durch Drive ersetzen (z. B. neues iPhone)
   async function driveLoad() {
     const d = state.drive;
+    if (d.busy) return;
     d.busy = true; d.err = null; d.msg = null; render();
     try {
       await GCAL.signIn();
@@ -644,7 +649,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 8')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 9')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -950,8 +955,11 @@
 
   function syncBanner() {
     const d = state.drive;
+    const txt = state.dirty > 0
+      ? state.dirty + (state.dirty === 1 ? ' Änderung' : ' Änderungen') + ' noch nicht in Drive'
+      : 'Noch nicht abgeglichen – holt Neues von Claude und aus Drive';
     return h('div', { class: 'sync' },
-      h('span', {}, state.dirty + (state.dirty === 1 ? ' Änderung' : ' Änderungen') + ' noch nicht in Drive' + (d.err ? ' – ' + d.err : '')),
+      h('span', {}, txt + (d.err ? ' – ' + d.err : '')),
       h('button', { class: 'btn', disabled: (d.busy || !state.online) ? '' : null, onclick: () => driveSync() },
         d.busy ? '…' : (state.online ? 'Abgleichen' : 'Offline')));
   }
@@ -971,7 +979,7 @@
     wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['liste', 'Liste'], ['bestand', 'Bestand']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
-    if (state.ready && state.dirty > 0) wrap.append(syncBanner());
+    if (state.ready && (state.dirty > 0 || (state.drive.id && !state.synced))) wrap.append(syncBanner());
     const main = h('main');
     if (!state.ready) main.append(h('div', { class: 'empty' }, 'Lade …'));
     else if (!state.bookings.length && !state.arts.length) {
@@ -1000,7 +1008,14 @@
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
   render();
-  load().then(render).catch((e) => {
+  function autoSync() {
+    if (!state.ready || !state.drive.id || !state.online || state.drive.busy || state.synced) return;
+    if (Date.now() - state.autoAt < 5 * 60 * 1000) return;
+    state.autoAt = Date.now();
+    driveSync(true);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
+  load().then(() => { render(); setTimeout(autoSync, 600); }).catch((e) => {
     document.getElementById('app').replaceChildren(h('div', { class: 'wrap' }, h('div', { class: 'empty' }, 'Speicher nicht verfügbar: ' + e.message)));
   });
 })();
