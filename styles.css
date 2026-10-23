@@ -282,7 +282,7 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .pc.ev-info{background:rgba(242,201,76,.35)!important;border-left:4px solid #f2c94c}
 .grp-mx{background:rgba(47,125,225,.16);border-left-color:#2f7de1}
 .grp-priv{background:rgba(92,201,138,.22);border-left-color:#5cc98a;color:var(--text)}
-.grp-bday{background:rgba(251,140,36,.22);border-left-color:#fb8c24;color:var(--text)}
+.grp-bday{background:rgba(168,85,247,.22);border-left-color:#a855f7;color:var(--text)}
 .evrow.ev-mx{background:rgba(47,125,225,.12);border-left:6px solid #2f7de1}
 .evrow.ev-priv{background:rgba(92,201,138,.2);border-left:6px solid #5cc98a}
-.evrow.ev-bday{background:rgba(251,140,36,.2);border-left:6px solid #fb8c24}
+.evrow.ev-bday{background:rgba(168,85,247,.2);border-left:6px solid #a855f7}

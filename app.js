@@ -85,7 +85,7 @@
   const isOpenBooking = (b) => b.status !== 'storniert' && b.status !== 'zurueck';
 
   // Einheitliche Farben: Buchung = Rot, Privat = Grün, Geburtstag = Orange, Feiertage/Wochen = Gelb
-  const KCOL = { mx: '#2f7de1', priv: '#5cc98a', bday: '#fb8c24', info: '#f2c94c' };
+  const KCOL = { mx: '#2f7de1', priv: '#5cc98a', bday: '#a855f7', info: '#f2c94c' };
   function bookCatColor() { return KCOL.mx; }
 
   // ===== Sperrliste (nur Anzeige) =====
@@ -718,7 +718,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 17')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 18')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
