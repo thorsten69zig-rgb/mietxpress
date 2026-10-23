@@ -62,6 +62,17 @@ const GCAL = (function () {
     return res.json();
   }
 
+  // Allgemeiner Aufruf mit Anmelde-Token (für Drive)
+  async function authFetch(url, opts) {
+    if (!isSignedIn()) throw new Error('Nicht angemeldet');
+    const o = Object.assign({}, opts || {});
+    o.headers = Object.assign({}, o.headers || {}, { Authorization: 'Bearer ' + token });
+    let res;
+    try { res = await fetch(url, o); } catch (e) { throw new Error('Google ist nicht erreichbar. Bist du offline?'); }
+    if (res.status === 401) { token = null; tokenExp = 0; throw new Error('Anmeldung abgelaufen, bitte neu verbinden'); }
+    return res;
+  }
+
   async function listCalendars() {
     const j = await api('/users/me/calendarList', { minAccessRole: 'reader', maxResults: 100 });
     return (j.items || []).map((c, i) => ({
@@ -115,5 +126,5 @@ const GCAL = (function () {
     return out;
   }
 
-  return { signIn, signOut, isSignedIn, listCalendars, listEvents, normEvent };
+  return { signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent };
 })();

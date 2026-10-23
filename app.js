@@ -15,7 +15,8 @@
     cursor: null, sel: null, open: {},
     von: '', bis: '',
     menu: false, online: navigator.onLine, importAt: null, ready: false,
-    cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null }
+    cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
+    drive: { id: null, at: null, busy: false, err: null, msg: null }
   };
 
   // ===== Hilfsfunktionen =====
@@ -122,6 +123,9 @@
     state.cal.events = ge || [];
     state.cal.at = ga || null;
     state.cal.connected = !!gcon;
+    const [did, dat] = await Promise.all([DB.getMeta('driveFileId'), DB.getMeta('driveAt')]);
+    state.drive.id = did || null;
+    state.drive.at = dat || null;
     state.ready = true;
   }
 
@@ -178,6 +182,7 @@
     await DB.setMeta('gcalEvents', []);
     await DB.setMeta('gcalAt', null);
     await DB.setMeta('gcalConnected', false);
+    state.drive.err = null; state.drive.msg = null;
     render();
   }
 
@@ -196,6 +201,58 @@
     return m;
   }
   const calColor = (id) => { const c = state.cal.cals.find((x) => x.id === id); return c ? c.color : '#6d28d9'; };
+
+
+  // ===== Google Drive: Hauptdaten sichern / laden =====
+  function payload() {
+    return { version: 1, gespeichert: new Date().toISOString(), buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre };
+  }
+  async function setDrive(id, at) {
+    state.drive.id = id; state.drive.at = at;
+    await DB.setMeta('driveFileId', id);
+    await DB.setMeta('driveAt', at);
+  }
+  async function driveRemote() {
+    // gemerkte Datei zuerst, sonst suchen
+    const f = await GDRIVE.find();
+    return f;
+  }
+  async function driveSave(opts) {
+    const d = state.drive;
+    d.busy = true; d.err = null; d.msg = null; render();
+    try {
+      await GCAL.signIn();
+      const remote = await driveRemote();
+      if (remote && !(opts && opts.force)) {
+        const newer = !d.at || remote.modified > d.at;
+        if (newer && !confirm('In Drive liegen Daten, die dieses Gerät noch nicht kennt (oder neuer sind). Mit den Daten dieses Geräts überschreiben?')) {
+          d.busy = false; render(); return;
+        }
+      }
+      const res = remote ? await GDRIVE.update(remote.id, payload()) : await GDRIVE.create(payload());
+      await setDrive(res.id, res.modified || new Date().toISOString());
+      d.msg = 'In Drive gesichert: ' + state.bookings.length + ' Buchungen';
+    } catch (e) { d.err = e.message || 'Fehler beim Sichern'; }
+    d.busy = false; render();
+  }
+  async function driveLoad() {
+    const d = state.drive;
+    d.busy = true; d.err = null; d.msg = null; render();
+    try {
+      await GCAL.signIn();
+      const remote = await driveRemote();
+      if (!remote) throw new Error('In Drive gibt es noch keine Daten. Erst "In Drive sichern".');
+      if ((state.bookings.length || state.arts.length) && !confirm('Lokale Daten werden durch die Daten aus Drive ersetzt. Fortfahren?')) {
+        d.busy = false; render(); return;
+      }
+      const data = await GDRIVE.download(remote.id);
+      if (!data || !Array.isArray(data.buchungen)) throw new Error('Die Drive-Datei hat ein unbekanntes Format.');
+      await replaceData(data);
+      await setDrive(remote.id, remote.modified);
+      d.msg = 'Aus Drive geladen: ' + state.bookings.length + ' Buchungen';
+    } catch (e) { d.err = e.message || 'Fehler beim Laden'; }
+    d.busy = false; render();
+  }
 
   async function replaceData(data) {
     const bookings = (data.buchungen || []).map((b, i) => norm(Object.assign({ id: 'b' + i }, b)));
@@ -423,6 +480,19 @@
     return h('div', { class: 'box' }, kids);
   }
 
+  function driveBox() {
+    const d = state.drive;
+    const kids = [h('div', { class: 'ct' }, 'Google Drive (Hauptdaten)')];
+    kids.push(h('p', { class: 'hint' }, 'Deine Buchungen liegen als Datei in deinem eigenen Google Drive. So bleiben sie erhalten, auch wenn das iPhone kaputtgeht, und andere Geräte sehen dieselben Daten.'));
+    kids.push(h('div', { class: 'row' }, h('span', {}, 'Zuletzt abgeglichen'), h('b', {}, d.at ? new Date(d.at).toLocaleString('de-DE') : 'noch nie')));
+    if (d.msg) kids.push(h('p', { class: 'hint' }, d.msg));
+    if (d.err) kids.push(h('p', { class: 'err' }, d.err));
+    kids.push(h('div', { class: 'stack' },
+      h('button', { class: 'btn', disabled: d.busy ? '' : null, onclick: () => driveSave() }, d.busy ? 'Bitte warten …' : 'In Drive sichern'),
+      h('button', { class: 'btn sec', disabled: d.busy ? '' : null, onclick: () => driveLoad() }, 'Aus Drive laden')));
+    return h('div', { class: 'box' }, kids);
+  }
+
   function viewMenu() {
     const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none' });
     file.addEventListener('change', async () => {
@@ -435,6 +505,7 @@
         state.menu = false;
         render();
         alert(state.bookings.length + ' Buchungen und ' + state.arts.length + ' Artikel geladen.');
+        if (GCAL.isSignedIn()) driveSave({ force: true });
       } catch (err) {
         alert('Import fehlgeschlagen: ' + err.message);
       }
@@ -448,6 +519,7 @@
         h('div', { class: 'row' }, h('span', {}, 'Sperrliste'), h('b', {}, state.sperre.length)),
         h('div', { class: 'row' }, h('span', {}, 'Letzter Import'), h('b', {}, imp))),
       googleBox(),
+      driveBox(),
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: () => file.click() }, 'Daten aus Datei laden (JSON)'),
         h('button', { class: 'btn sec', onclick: () => download('mietxpress-daten-' + iso(new Date()) + '.json',
@@ -461,7 +533,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen nur auf diesem Gerät und funktionieren ohne Internet.')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet.')));
   }
 
   // ===== Rendern =====
