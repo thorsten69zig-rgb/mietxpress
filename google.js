@@ -3,7 +3,7 @@
    App offline sofort startet. Der Zugriff ist nur lesend (calendar.readonly). */
 const GCAL = (function () {
   const CLIENT_ID = '780465482026-0kj6jjln8md7c96hiphjvs0tom5k8fg9.apps.googleusercontent.com';
-  const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.file';
+  const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file';
   const API = 'https://www.googleapis.com/calendar/v3';
   const PALETTE = ['#6d28d9', '#0f766e', '#b58900', '#2b6cb0', '#be123c', '#047857', '#9333ea', '#c2410c'];
 
@@ -73,13 +73,29 @@ const GCAL = (function () {
     return res;
   }
 
+  // Termine schreiben (nur Buchungs-Termine; der Bereich calendar.events erlaubt nur Termine, keine Kalender-Einstellungen)
+  async function calWrite(method, path, body) {
+    const opts = { method };
+    if (body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+    const res = await authFetch(API + path, opts);
+    if (res.status === 404 || res.status === 410) return { gone: true };
+    if (res.status === 403) throw new Error('Kalender-Schreibrecht fehlt. Bitte "Verbindung trennen" und neu verbinden.');
+    if (!res.ok) throw new Error('Google-Fehler ' + res.status + ' beim Eintragen');
+    return method === 'DELETE' ? {} : res.json();
+  }
+  const evPath = (cal, id) => '/calendars/' + encodeURIComponent(cal) + '/events' + (id ? '/' + encodeURIComponent(id) : '');
+  const createEvent = (cal, ev) => calWrite('POST', evPath(cal), ev);
+  const updateEvent = (cal, id, ev) => calWrite('PUT', evPath(cal, id), ev);
+  const deleteEvent = (cal, id) => calWrite('DELETE', evPath(cal, id));
+
   async function listCalendars() {
     const j = await api('/users/me/calendarList', { minAccessRole: 'reader', maxResults: 100 });
     return (j.items || []).map((c, i) => ({
       id: c.id,
       name: c.summaryOverride || c.summary || c.id,
       color: PALETTE[i % PALETTE.length],
-      primary: !!c.primary
+      primary: !!c.primary,
+      access: c.accessRole || ''
     }));
   }
 
@@ -126,5 +142,5 @@ const GCAL = (function () {
     return out;
   }
 
-  return { signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent };
+  return { signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent, createEvent, updateEvent, deleteEvent };
 })();

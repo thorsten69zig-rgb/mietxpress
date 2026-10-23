@@ -17,7 +17,8 @@
     menu: false, online: navigator.onLine, importAt: null, ready: false,
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
     drive: { id: null, at: null, busy: false, err: null, msg: null },
-    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, delArm: null
+    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, delArm: null,
+    calWrite: false, calDel: []
   };
 
   // ===== Hilfsfunktionen =====
@@ -132,6 +133,9 @@
     state.tomb = tomb || {};
     state.artikelAt = aAt || null;
     state.sperrAt = sAt || null;
+    const [cw, cd] = await Promise.all([DB.getMeta('calWrite'), DB.getMeta('calDel')]);
+    state.calWrite = !!cw;
+    state.calDel = Array.isArray(cd) ? cd : [];
     state.ready = true;
   }
 
@@ -196,8 +200,10 @@
 
   function evMap() {
     const m = {};
+    const linked = new Set(state.bookings.filter((b) => b.gcalEventId).map((b) => b.gcalEventId));
     state.cal.events.forEach((ev) => {
       if (state.cal.sel.indexOf(ev.cal) < 0) return;
+      if (linked.has(ev.id.slice(ev.cal.length + 1))) return; // gehört zu einer Buchung, die schon als Buchung zu sehen ist
       let d = parse(ev.start);
       const end = parse(ev.ende);
       for (let n = 0; d <= end && n < 62; n++) {
@@ -234,6 +240,28 @@
     await DB.setMeta('sperrAt', m.sperrAt);
     await load();
   }
+  // ===== Buchungen in den Google-Kalender eintragen =====
+  async function setCalDel(list) { state.calDel = list; await DB.setMeta('calDel', list); }
+  async function calendarPush() {
+    if (!state.calWrite) return null;
+    const cals = await GCAL.listCalendars();
+    state.cal.cals = state.cal.cals.map((c) => Object.assign({}, c, { access: (cals.find((x) => x.id === c.id) || {}).access || c.access }));
+    await DB.setMeta('gcalCals', state.cal.cals);
+    const miet = cals.find((c) => /mietxpress/i.test(c.name) && (c.access === 'owner' || c.access === 'writer'));
+    if (!miet) throw new Error('Kalender "Müllers MietXpress" nicht gefunden oder nicht beschreibbar.');
+    const pl = CALSYNC.plan(state.bookings, state.calDel);
+    if (!pl.actions.length && !pl.dels.length) return { neu: 0, geaendert: 0, geloescht: 0 };
+    const stat = await CALSYNC.run(pl, miet.id, GCAL,
+      async (id, patch) => {
+        const all = await DB.getAll('buchungen');
+        const cur = all.find((x) => x.id === id);
+        if (cur) await DB.put('buchungen', Object.assign({}, cur, patch, { geaendert: nowIso() }));
+      },
+      async (eventId) => { await setCalDel(state.calDel.filter((x) => x !== eventId)); });
+    await load();
+    return stat;
+  }
+
   // Abgleichen: Drive und dieses Gerät werden zusammengeführt, nichts wird blind überschrieben
   async function driveSync() {
     const d = state.drive;
@@ -251,6 +279,9 @@
         buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre,
         geloescht: state.tomb, artikelAt: state.artikelAt, sperrAt: state.sperrAt
       }, rdata);
+      // Buchungen, die durch den Abgleich verschwinden (auf anderem Gerät gelöscht), nehmen ihren Kalender-Termin mit
+      const gone = state.bookings.filter((b) => b.gcalEventId && !m.buchungen.some((x) => String(x.id) === b.id)).map((b) => b.gcalEventId);
+      if (gone.length) await setCalDel(state.calDel.concat(gone.filter((id) => state.calDel.indexOf(id) < 0)));
       await applyMerged(m);
       let res = remote;
       if (!remote) res = await GDRIVE.create(payload());
@@ -259,8 +290,20 @@
       state.dirty = 0;
       await DB.setMeta('dirty', 0);
       const st = m.stat;
+      let calMsg = '';
+      try {
+        const cs = await calendarPush();
+        if (cs) {
+          calMsg = ' Kalender: ' + cs.neu + ' angelegt, ' + cs.geaendert + ' geändert, ' + cs.geloescht + ' gelöscht.';
+          if (cs.neu || cs.geaendert || cs.geloescht) {
+            const r2 = await GDRIVE.update(res.id, payload()); // Termin-IDs auch in Drive sichern
+            await setDrive(res.id, r2.modified || new Date().toISOString());
+            try { await fetchEvents(); } catch (e) { /* Anzeige aktualisiert sich beim nächsten Mal */ }
+          }
+        }
+      } catch (e) { d.err = 'Kalender: ' + (e.message || 'Fehler'); }
       d.msg = 'Abgeglichen: ' + state.bookings.length + ' Buchungen (' + st.neu + ' neu aus Drive, ' + st.aktualisiert + ' aktualisiert, ' + st.geloescht + ' gelöscht). ' +
-        (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.'));
+        (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.')) + calMsg;
     } catch (e) { d.err = e.message || 'Fehler beim Abgleichen'; }
     d.busy = false; render();
   }
@@ -390,6 +433,7 @@
       row('Quelle', b.plattform),
       b.kaution > 0 ? row('Kaution', eur(b.kaution) + ' (' + (KAUT[b.kautionStatus] || b.kautionStatus) + ')') : null,
       row('Notiz', b.notiz),
+      b.status !== 'storniert' ? h('div', {}, h('span', {}, 'Kalender: '), b.gcalEventId || b.kalender === 'ja' ? '✓ eingetragen' : (b.kalender === 'abweichend' ? '⚠ Kalender abweichend' : (state.calWrite ? 'wird beim Abgleichen eingetragen' : 'nicht eingetragen'))) : null,
       actions(b)
     );
   }
@@ -526,6 +570,12 @@
         h('input', { type: 'checkbox', checked: c.sel.indexOf(cal.id) > -1 ? '' : null, onchange: () => toggleCal(cal.id) }),
         h('i', { style: 'background:' + cal.color }), cal.name)));
     }
+    if (c.connected) {
+      kids.push(h('label', { class: 'calrow' },
+        h('input', { type: 'checkbox', checked: state.calWrite ? '' : null, onchange: async (e) => { state.calWrite = e.target.checked; await DB.setMeta('calWrite', state.calWrite); render(); } }),
+        h('span', {}, 'Buchungen automatisch in den Kalender "Müllers MietXpress" eintragen (beim Abgleichen)')));
+      if (state.calWrite) kids.push(h('p', { class: 'hint' }, 'Neue und geänderte Buchungen werden beim nächsten "Mit Drive abgleichen" eingetragen. Stornierte und gelöschte Buchungen nehmen ihren Termin mit. Beim ersten Mal fragt Google nach der Erlaubnis, Termine zu schreiben.'));
+    }
     if (c.err) kids.push(h('p', { class: 'err' }, c.err));
     kids.push(h('div', { class: 'stack' },
       h('button', { class: 'btn', disabled: c.busy ? '' : null, onclick: connectGoogle },
@@ -588,7 +638,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 5')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 6')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -602,6 +652,7 @@
   async function saveBooking(b) {
     const n = norm(Object.assign({}, b, { geaendert: nowIso() }));
     await DB.put('buchungen', n);
+    if (n.gcalEventId && state.calDel.indexOf(n.gcalEventId) > -1) await setCalDel(state.calDel.filter((x) => x !== n.gcalEventId));
     if (state.tomb[n.id]) { delete state.tomb[n.id]; await DB.setMeta('tomb', state.tomb); }
     await markDirty();
     await load();
@@ -615,6 +666,7 @@
   }
   async function removeBooking(b) {
     await DB.remove('buchungen', b.id);
+    if (b.gcalEventId && state.calDel.indexOf(b.gcalEventId) < 0) await setCalDel(state.calDel.concat([b.gcalEventId]));
     state.tomb[b.id] = nowIso();
     await DB.setMeta('tomb', state.tomb);
     await markDirty();
