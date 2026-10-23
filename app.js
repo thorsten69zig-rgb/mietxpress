@@ -84,16 +84,9 @@
   const isActive = (b) => b.status !== 'storniert';
   const isOpenBooking = (b) => b.status !== 'storniert' && b.status !== 'zurueck';
 
-  function bookCatColor(b) {
-    const cats = {};
-    let cnt = 0;
-    Avail.positionsOf(b, state.arts).forEach((p) => {
-      const a = Avail.artByName(state.arts, p.artikel);
-      if (a && !cats[a.kategorie]) { cats[a.kategorie] = 1; cnt++; }
-    });
-    if (cnt === 1) return CATS[Object.keys(cats)[0]] || '#8b93a5';
-    return cnt > 1 ? '#64748b' : '#8b93a5';
-  }
+  // Einheitliche Farben: Buchung = Rot, Privat = Grün, Geburtstag = Orange, Feiertage/Wochen = Gelb
+  const KCOL = { mx: '#e0393e', priv: '#5cc98a', bday: '#fb8c24', info: '#f2c94c' };
+  function bookCatColor() { return KCOL.mx; }
 
   // ===== Sperrliste (nur Anzeige) =====
   const normName = (s) => String(s || '').toLowerCase().replace(/[^a-zäöüß0-9]+/g, ' ').trim();
@@ -216,6 +209,7 @@
     return m;
   }
   const calColor = (id) => { const c = state.cal.cals.find((x) => x.id === id); return c ? c.color : '#6d28d9'; };
+  const evColor = (ev) => KCOL[evKind(ev)];
 
 
   // ===== Google Drive: Hauptdaten abgleichen =====
@@ -488,8 +482,8 @@
   const KIND_LABEL = { mx: 'MietXpress-Kalender', bday: 'Geburtstage 🎂', priv: 'Privat', info: 'Feiertage & Wochen' };
   const byKind = (a, b) => (KIND_ORDER[evKind(a)] - KIND_ORDER[evKind(b)]) || (a.zeit || '').localeCompare(b.zeit || '');
   function evChip(ev) {
-    const k = evKind(ev), col = calColor(ev.cal);
-    const style = k === 'mx' ? 'border:2px dashed ' + col + ';background:' + col + '33' : (k === 'priv' ? 'background:' + col + '66;border-left:4px dotted ' + col : null);
+    const k = evKind(ev), col = KCOL[k];
+    const style = 'border-left:4px solid ' + col + ';background:' + col + '66';
     return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')));
   }
 
@@ -561,7 +555,7 @@
         h('div', { class: 'dn' }, d.getDate()),
         list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
-          return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '55' },
+          return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '66' },
             h('span', { class: 'pn' }, b.name || '—'),
             b.artikel ? h('span', { class: 'pa' }, b.artikel) : null,
             (b.start === ds ? (b.abholzeit || b.zeit || '') : (b.ende === ds ? (b.rueckzeit || '') : '')) ? h('span', { class: 'pt' }, (b.start === ds ? '↑ ' + (b.abholzeit || b.zeit) : '↓ ' + b.rueckzeit)) : null,
@@ -584,7 +578,7 @@
     dayEv.forEach((ev) => {
       const k = evKind(ev);
       if (k !== lastK) { main.append(h('div', { class: 'grp grp-' + k }, KIND_LABEL[k])); lastK = k; }
-      main.append(h('div', { class: 'evrow ev-' + k, style: '--pc:' + calColor(ev.cal) },
+      main.append(h('div', { class: 'evrow ev-' + k, style: '--pc:' + evColor(ev) },
         h('b', {}, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')),
         h('div', { class: 'art' }, [ev.zeit || 'ganztägig', ev.start !== ev.ende ? fmtD(ev.start) + ' – ' + fmtD(ev.ende) : '', ev.ort].filter(Boolean).join(' · '))));
     });
@@ -724,7 +718,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 15')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 16')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
