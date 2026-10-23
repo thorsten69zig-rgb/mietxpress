@@ -242,3 +242,14 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .pc .pn{-webkit-line-clamp:1;font-size:10.5px}
 .pc .pa{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;color:var(--text);opacity:.85;word-break:break-word}
 .pc .pt{display:block;font-size:9px;font-weight:700;color:var(--muted);margin-top:1px}
+
+/* v14: maximale Info in Tageskacheln – kein Abschneiden, Kacheln wachsen mit */
+.day{min-height:104px;height:auto;padding:1px}
+.grid{gap:2px;align-items:stretch}
+.pc{font-size:9.5px;line-height:1.15;padding:2px 3px;hyphens:auto;-webkit-hyphens:auto;overflow-wrap:anywhere;word-break:normal}
+.pc .pn,.pc .pa{display:block;-webkit-line-clamp:unset;overflow:visible;text-overflow:clip;white-space:normal}
+.pc .pn{font-size:10px}
+.pc .pt{white-space:nowrap}
+.pc .po{display:block;font-size:9px;font-weight:700;color:#b45309}
+.pc.ev .pn{font-weight:600}
+.wrap{padding-left:6px;padding-right:6px}
