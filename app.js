@@ -493,6 +493,10 @@
     return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')));
   }
 
+  function shortArt(t) {
+    const p = String(t).split(/\s*[,+&]\s*|\s+und\s+/).filter(Boolean);
+    return p.length > 1 ? p[0] + ' +' + (p.length - 1) : p[0] || '';
+  }
   function viewMonat(main) {
     const c = state.cursor, y = c.getFullYear(), mo = c.getMonth();
     main.append(h('div', { class: 'mnav' },
@@ -519,8 +523,8 @@
     const ts = iso(today0());
     for (let i = 0; i < rows * 7; i++) {
       const d = addDays(start, i), ds = iso(d), list = map[ds] || [], evs = (ems[ds] || []).slice().sort(byKind);
-      const bShown = Math.min(list.length, 2);
-      const eShown = Math.min(evs.length, 3 - bShown);
+      const bShown = Math.min(list.length, 3);
+      const eShown = Math.min(evs.length, 4 - bShown);
       const more = list.length + evs.length - bShown - eShown;
       grid.append(h('button', {
         class: 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === ts ? ' today' : '') + (ds === state.sel ? ' sel' : ''),
@@ -530,7 +534,9 @@
         list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
           return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '55' },
-            h('span', { class: 'pn' }, b.name || '—'));
+            h('span', { class: 'pn' }, b.name || '—'),
+            b.artikel ? h('span', { class: 'pa' }, shortArt(b.artikel)) : null,
+            (b.start === ds ? (b.abholzeit || b.zeit || '') : (b.ende === ds ? (b.rueckzeit || '') : '')) ? h('span', { class: 'pt' }, (b.start === ds ? '↑ ' + (b.abholzeit || b.zeit) : '↓ ' + b.rueckzeit)) : null);
         }),
         evs.slice(0, eShown).map(evChip),
         more > 0 ? h('div', { class: 'more' }, '+' + more) : null));
@@ -688,7 +694,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 12')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 13')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====

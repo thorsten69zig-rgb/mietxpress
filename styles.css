@@ -235,3 +235,10 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .pc.ev-bday{background:rgba(219,39,119,.32);border:2px solid #db2777;font-weight:800}
 .pc.ev-info{color:var(--text);background:rgba(247,201,63,.28)}
 .day.out{opacity:.6}
+
+/* v13: mehr Infos in den Tageskacheln */
+.day{min-height:104px}
+.pc{font-size:10px}
+.pc .pn{-webkit-line-clamp:1;font-size:10.5px}
+.pc .pa{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;color:var(--text);opacity:.85;word-break:break-word}
+.pc .pt{display:block;font-size:9px;font-weight:700;color:var(--muted);margin-top:1px}
