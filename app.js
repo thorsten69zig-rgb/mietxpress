@@ -17,7 +17,7 @@
     menu: false, online: navigator.onLine, importAt: null, ready: false,
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
     drive: { id: null, at: null, busy: false, err: null, msg: null },
-    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, priceQ: '', pvon: '', pbis: '', delArm: null,
+    dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, priceQ: '', pvon: '', pbis: '', pickup: null, info: null, chk: {}, revealUntil: 0, sperrOpen: false, sperrPre: null, sperrDelArm: null, bestandOpen: false, logo: null, delArm: null,
     calWrite: false, calDel: [], synced: false, autoAt: 0
   };
 
@@ -134,6 +134,7 @@
     state.artikelAt = aAt || null;
     state.sperrAt = sAt || null;
     const [cw, cd] = await Promise.all([DB.getMeta('calWrite'), DB.getMeta('calDel')]);
+    state.logo = (await DB.getMeta('logo')) || null;
     state.calWrite = !!cw;
     state.calDel = Array.isArray(cd) ? cd : [];
     state.ready = true;
@@ -488,7 +489,7 @@
   const byKind = (a, b) => (KIND_ORDER[evKind(a)] - KIND_ORDER[evKind(b)]) || (a.zeit || '').localeCompare(b.zeit || '');
   function evChip(ev) {
     const k = evKind(ev), col = calColor(ev.cal);
-    const style = k === 'mx' ? 'border:1px dashed ' + col : (k === 'priv' ? 'background:' + col + '33;border-left:3px dotted ' + col : null);
+    const style = k === 'mx' ? 'border:2px dashed ' + col + ';background:' + col + '33' : (k === 'priv' ? 'background:' + col + '66;border-left:4px dotted ' + col : null);
     return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')));
   }
 
@@ -528,7 +529,7 @@
         h('div', { class: 'dn' }, d.getDate()),
         list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
-          return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:3px solid ' + col + ';background:' + col + '26' },
+          return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '55' },
             h('span', { class: 'pn' }, b.name || '—'));
         }),
         evs.slice(0, eShown).map(evChip),
@@ -671,6 +672,10 @@
       driveBox(),
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
+        h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
+        h('button', { class: 'btn sec', onclick: () => { state.menu = false; state.bestandOpen = true; render(); window.scrollTo(0, 0); } }, 'Bestand bearbeiten'),
+        h('button', { class: 'btn sec', onclick: pickLogo }, 'Logo ändern (dieses Gerät)'),
+        state.logo ? h('button', { class: 'btn sec', onclick: resetLogo }, 'Logo zurücksetzen') : null,
         h('button', { class: 'btn sec', onclick: () => file.click() }, 'Alle Daten aus Datei laden (ersetzt alles)'),
         h('button', { class: 'btn sec', onclick: () => download('mietxpress-daten-' + iso(new Date()) + '.json',
           JSON.stringify({ version: 2, exportiert: new Date().toISOString(), buchungen: state.bookings, artikel: state.arts, sperrliste: state.sperre, geloescht: state.tomb }, null, 1)) }, 'Backup speichern'),
@@ -683,7 +688,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 10')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 11')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -748,7 +753,9 @@
       b.kaution > 0 ? h('div', { class: 'arow' }, ['offen', 'erhalten', 'zurueck'].map((k) =>
         h('button', { class: b.kautionStatus === k ? 'on' : '', onclick: () => patchBooking(b, { kautionStatus: k }) }, 'Kaution ' + KAUT[k].toLowerCase()))) : null,
       h('div', { class: 'arow' },
+        h('button', { onclick: () => openPickup(b) }, '📦 Abholung'),
         h('button', { onclick: () => openMsgs(b) }, '💬 Nachricht'),
+        rechBtn(b),
         h('button', { onclick: () => openEdit(b) }, 'Bearbeiten'),
         h('button', { class: 'del', onclick: delClick }, 'Buchung löschen')));
   }
@@ -902,6 +909,319 @@
     setTimeout(paintWarn, 0);
     return root;
   }
+
+  // ===== Abholung, Mietvertrag, Rechnung, Statistik, Sperrliste, Bestand =====
+  const ACCS = {
+    'Hüpfburg Schloss': 'Lüfter und Unterlegplane', 'Hüpfburg Slide': 'Lüfter und Unterlegplane', 'Hüpfburg Space': 'Lüfter und Unterlegplane', 'Hüpfburg Kleines Schloss': 'Lüfter und Unterlegplane',
+    'Popcornmaschine Star': 'Schaufel', 'PartyBox JBL 520': 'Hülle und Akku', 'Nebelmaschine Fog Beamz': 'Fernbedienung', 'LED Lichtanlage': 'Ständer',
+    'Zuckerwattenmaschine Sweet': 'Zuckerlöffel', 'Schneemaschine/Schaumkanone Snow': 'Fernbedienung (Funk und Kabel)', 'Crepes Maschine Paris': 'Wender und Verteiler',
+    'Party-Kühlschrank/Akku-Kühlbox': 'Akku', 'DJ & Party Paket': '2x Mikro, 2x JBL 520, 2x Ständer, Nebelmaschine, Partylicht'
+  };
+  const fmtDE = (s) => { const d = parse(s); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear(); };
+  const fmtShort = (s) => parse(s).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  const nDays = (b) => diffDays(parse(b.ende), parse(b.start)) + 1;
+  const sortAsc = (a, b) => (a.start + (a.abholzeit || '')).localeCompare(b.start + (b.abholzeit || ''));
+
+  function openPickup(b) { state.pickup = b.id; state.info = null; render(); window.scrollTo(0, 0); }
+  function closePickup() { state.pickup = null; render(); }
+  function rechBtn(b) {
+    if (b.status === 'storniert') return null;
+    if (b.rechnung === 'erstellt') return h('span', { class: 'rech done' }, '🧾 Rechnung ' + (b.rechnungNr || '') + ' erstellt');
+    if (b.rechnung === 'angefordert') return h('button', { class: 'rech req', onclick: (ev) => { ev.stopPropagation(); patchBooking(b, { rechnung: '' }); toast('Rechnungsauftrag zurückgenommen'); } }, '🧾 Rechnung angefordert ✕');
+    return h('button', { class: 'rech', onclick: (ev) => { ev.stopPropagation(); patchBooking(b, { rechnung: 'angefordert', rechnungAm: iso(new Date()) }); toast('Vorgemerkt – im Chat „Rechnungen schreiben" sagen'); } }, '🧾 Rechnung schreiben');
+  }
+  function viewPickup() {
+    const b = state.bookings.find((x) => x.id === state.pickup);
+    if (!b) return h('div');
+    const n = nDays(b), s = parse(b.start);
+    const offen = Math.max(0, b.preis - b.anzahlung);
+    const kOff = (b.kaution > 0 && b.kautionStatus === 'offen') ? b.kaution : 0;
+    const total = offen + kOff, ps = Avail.positionsOf(b, state.arts);
+    const row = (l, v, cls) => h('div', { class: 'r' + (cls ? ' ' + cls : '') }, h('span', {}, l), h('b', {}, v));
+    const sm = sperrMatch(b);
+    const slip = h('div', { class: 'slip' },
+      row('Mietgegenstand', b.artikel || '–'),
+      row('Mietdatum', fmtDE(b.start) + (n > 1 ? ' – ' + fmtDE(b.ende) : '')),
+      row('Uhrzeit', b.abholzeit ? b.abholzeit + ' Uhr' : 'Zeit offen'),
+      row('Wochentag', s.toLocaleDateString('de-DE', { weekday: 'long' })),
+      row('Name', b.name || '–'),
+      row('Kaution', b.kaution > 0 ? eur(b.kaution) + (b.kautionStatus === 'erhalten' ? ' ✓ erhalten' : (b.kautionStatus === 'zurueck' ? ' (zurück)' : '')) : 'keine'),
+      row('Schon bezahlt', eur(b.anzahlung)),
+      row('Noch zu zahlen', offen > 0 ? eur(offen) : '0 € ✓', 'big'));
+    const due = total > 0
+      ? h('div', { class: 'pay' }, h('span', {}, h('small', {}, 'Jetzt kassieren (bar)'), h('br'), h('small', {}, [offen > 0 ? 'Rest ' + eur(offen) : null, kOff > 0 ? 'Kaution ' + eur(kOff) : null].filter(Boolean).join(' + '))), h('b', {}, eur(total)))
+      : h('div', { class: 'pay ok' }, h('span', {}, 'Alles bezahlt ✓'));
+    const info = h('div', { class: 'slip' },
+      row('Rückgabe', fmtShort(b.ende) + ' · ' + (b.rueckzeit ? b.rueckzeit + ' Uhr' : 'Zeit offen') + ' (' + n + (n === 1 ? ' Tag' : ' Tage') + ')'),
+      b.telefon ? row('Telefon', b.telefon) : null,
+      b.adresse ? row('Adresse', b.adresse) : null,
+      b.notiz ? row('Notiz', b.notiz) : null);
+    const chk = (key, label) => {
+      const k = b.id + '|' + key;
+      return h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: state.chk[k] ? '' : null, onchange: (ev) => { state.chk[k] = ev.target.checked; } }), h('span', {}, label));
+    };
+    const list = h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, 'Vor der Übergabe'),
+      chk('id', 'Lichtbildausweis geprüft'), chk('vertrag', 'Mietvertrag unterschrieben'),
+      ps.filter((p) => ACCS[p.artikel]).map((p) => chk('acc-' + p.artikel, p.artikel + ': inkl. ' + ACCS[p.artikel])),
+      chk('zustand', 'Zustand gemeinsam geprüft'));
+    const setSt = (st) => async () => { await patchBooking(b, { status: st, statusVorher: b.status }); };
+    const acts = h('div', { class: 'ovacts' },
+      h('button', { class: 'cb mv full', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag erstellen (PDF)'),
+      b.status !== 'abgeholt' && b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb abh', onclick: setSt('abgeholt') }, 'Als abgeholt markieren') : null,
+      b.status === 'abgeholt' ? h('button', { class: 'cb undo', onclick: () => patchBooking(b, { status: (b.statusVorher && b.statusVorher !== 'abgeholt' && b.statusVorher !== 'zurueck') ? b.statusVorher : 'bestaetigt' }) }, 'Rückgängig: nicht abgeholt') : null,
+      b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb ret', onclick: setSt('zurueck') }, 'Als zurückgebracht markieren') : null,
+      b.status === 'zurueck' ? h('button', { class: 'cb undo', onclick: () => patchBooking(b, { status: 'abgeholt', statusVorher: 'bestaetigt' }) }, 'Rückgängig: nicht zurück') : null,
+      b.status === 'abgeholt' ? h('span', { class: 'chip st-abgeholt', style: 'align-self:center' }, 'Abgeholt ✓') : null,
+      b.status === 'zurueck' ? h('span', { class: 'chip st-zurueck', style: 'align-self:center' }, 'Zurück ✓') : null,
+      rechBtn(b),
+      h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, '💬 Nachricht'),
+      sm ? null : h('button', { class: 'cb sperr', onclick: () => { state.pickup = null; openSperr({ name: b.name || '', telefon: b.telefon || '' }); } }, '🚫 Kunde sperren'));
+    return h('div', { class: 'ov', id: 'pickupov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Abholung'), h('button', { class: 'btn sec', onclick: closePickup }, 'Schließen')),
+      sm ? h('div', { class: 'warnbox err2' }, '🚫 Gesperrter Kunde' + (sm.grund ? ' – ' + sm.grund : '')) : null,
+      slip, due, acts, h('div', { style: 'height:10px' }), list, info));
+  }
+
+  // --- Mietvertrag (PDF-Vorlage im Browser ausfüllen, funktioniert offline) ---
+  const BOXROWS = [437.5, 468.9, 500.4, 531.8, 563.3, 594.7, 626.2, 657.6, 698.3, 729.7];
+  const BOXCOLX = { L: 52.6, R: 293.6 };
+  const BOXMAP = {
+    'Hüpfburg Schloss': ['L', 0], 'Hüpfburg Slide': ['L', 1], 'Hüpfburg Space': ['L', 2], 'Hüpfburg Kleines Schloss': ['L', 3],
+    'Popcornmaschine Star': ['L', 4], 'Slush Eis Maschine Ninja': ['L', 5], 'PartyBox JBL 520': ['L', 6],
+    'Nebelmaschine Fog Beamz': ['L', 7], 'LED Lichtanlage': ['L', 8],
+    'Zuckerwattenmaschine Sweet': ['R', 0], 'Schneemaschine/Schaumkanone Snow': ['R', 1], 'Speisewärmer Eat': ['R', 2],
+    'Crepes Maschine Paris': ['R', 3], 'Stehtisch': ['R', 4], 'Bierzeltgarnitur': ['R', 5],
+    'Party-Kühlschrank/Akku-Kühlbox': ['R', 6], 'DJ & Party Paket': ['R', 7], 'Glühweinkocher/Wasserkocher': ['R', 8],
+    'kukki Cocktail-Toaster': ['L', 9], 'Aperol Spritz Maschine': ['R', 9]
+  };
+  const safeTxt = (s) => String(s == null ? '' : s).replace(/[^\x20-\x7E -ÿ–—€]/g, '?');
+  function splitName(n) {
+    n = String(n || '').replace(/\s*\(.*?\)\s*/g, ' ').trim();
+    if (n.indexOf(',') > -1) return n;
+    const p = n.split(/\s+/); if (p.length < 2) return n;
+    const last = p.pop(); return last + ', ' + p.join(' ');
+  }
+  function splitAddr(a) {
+    a = String(a || '').trim(); const i = a.lastIndexOf(',');
+    if (i < 0) return { strasse: a, plz: '' };
+    return { strasse: a.slice(0, i).trim(), plz: a.slice(i + 1).trim() };
+  }
+  const deMoney = (v) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function contractFilename(b) {
+    const last = splitName(b.name).split(',')[0].replace(/[^A-Za-z0-9ÄÖÜäöüß-]+/g, '') || 'Kunde';
+    const d = parse(b.start);
+    return 'Mietvertrag_' + last + '_' + pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear() + '.pdf';
+  }
+  function loadPdfLib() {
+    return new Promise((resolve, reject) => {
+      if (window.PDFLib) return resolve(window.PDFLib);
+      const sc = document.createElement('script');
+      sc.src = 'pdf-lib.min.js';
+      sc.onload = () => (window.PDFLib ? resolve(window.PDFLib) : reject(new Error('lib')));
+      sc.onerror = () => reject(new Error('lib'));
+      document.head.append(sc);
+    });
+  }
+  async function buildContract(b, positions) {
+    const PL = await loadPdfLib();
+    const res = await fetch('mietvertrag-vorlage.pdf');
+    if (!res.ok) throw new Error('tpl');
+    const doc = await PL.PDFDocument.load(await res.arrayBuffer());
+    const font = await doc.embedFont(PL.StandardFonts.Helvetica);
+    const pages = doc.getPages(), p1 = pages[0], p2 = pages[1], H = p1.getHeight(), ink = PL.rgb(0.07, 0.07, 0.07);
+    const T = (page, x, top, s, size) => { s = safeTxt(s); if (!s) return; page.drawText(s, { x, y: H - top, size: size || 10, font, color: ink }); };
+    const ad = splitAddr(b.adresse);
+    const uhr = b.abholzeit && b.rueckzeit ? b.abholzeit + ' – ' + b.rueckzeit + ' Uhr' : (b.abholzeit ? b.abholzeit + ' Uhr' : '');
+    T(p1, 142, 261.0, splitName(b.name));
+    T(p1, 142, 285.2, ad.strasse);
+    T(p1, 142, 309.4, ad.plz);
+    T(p1, 142, 333.6, b.telefon);
+    T(p1, 47, 395.6, fmtDE(b.start));
+    T(p1, 166, 395.6, fmtDE(b.ende));
+    T(p1, 286, 395.6, uhr, 9);
+    T(p1, 401, 395.6, 'Selbstabholung', 9);
+    positions.forEach((pos) => {
+      const m = BOXMAP[pos.artikel]; if (!m) return;
+      const n = Number(pos.anzahl) || 1, cx = BOXCOLX[m[0]] + 6.8, cy = BOXROWS[m[1]] + 5.3, sz = 4.2;
+      p1.drawLine({ start: { x: cx - sz, y: H - (cy - sz) }, end: { x: cx + sz, y: H - (cy + sz) }, thickness: 1.6, color: ink });
+      p1.drawLine({ start: { x: cx - sz, y: H - (cy + sz) }, end: { x: cx + sz, y: H - (cy - sz) }, thickness: 1.6, color: ink });
+      if (pos.artikel === 'Stehtisch') T(p1, 343, 587.0, n, 9);
+      if (pos.artikel === 'Speisewärmer Eat') T(p1, 343, 524.0, n, 9);
+      if (pos.artikel === 'Bierzeltgarnitur') { T(p1, 369, 618.4, n, 9); T(p1, 442, 618.4, n * 2, 9); }
+    });
+    T(p2, 47, 116.5, deMoney(b.preis));
+    T(p2, 171, 116.5, deMoney(b.kaution));
+    T(p2, 286, 116.5, deMoney(0));
+    T(p2, 406, 116.5, deMoney(b.anzahlung));
+    const od = 'C-R, ' + fmtDE(b.start);
+    T(p2, 47, 600.0, od);
+    T(p2, 299, 600.0, od);
+    return await doc.save();
+  }
+  async function deliverPdf(bytes, name) {
+    const file = new File([bytes], name, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return 'geteilt'; }
+      catch (e) { if (e && e.name === 'AbortError') return 'abbruch'; }
+    }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return 'download';
+  }
+  async function makeContract(b, btn) {
+    const old = btn.textContent; btn.disabled = true; btn.textContent = 'Erstelle …';
+    try {
+      const pos = Avail.positionsOf(b, state.arts);
+      if (!pos.length) { toast('Keine Artikel zugeordnet'); return; }
+      const bytes = await buildContract(b, pos);
+      const r = await deliverPdf(bytes, contractFilename(b));
+      if (r !== 'abbruch') toast('Mietvertrag erstellt');
+    } catch (e) {
+      console.error('Mietvertrag:', e);
+      toast(e && e.message === 'lib' ? 'PDF-Baustein nicht geladen (einmal online öffnen)' : 'Mietvertrag konnte nicht erstellt werden');
+    } finally { btn.disabled = false; btn.textContent = old; }
+  }
+
+  // --- Statistik ---
+  function stats() {
+    const t = today0(), ts = iso(t), in7 = iso(addDays(t, 7));
+    const list = state.bookings;
+    const soonL = list.filter((b) => isOpenBooking(b) && b.start >= ts && b.start <= in7).sort(sortAsc);
+    const mk = state.cursor.getFullYear() + '-' + pad(state.cursor.getMonth() + 1);
+    const monL = list.filter((b) => isActive(b) && b.start.indexOf(mk) === 0).sort(sortAsc);
+    const rev = monL.reduce((s2, b) => s2 + b.preis, 0);
+    const paid = monL.reduce((s2, b) => s2 + Math.min(b.anzahlung, b.preis), 0);
+    const outL = list.filter((b) => b.status === 'abgeholt').sort((a, b) => a.ende.localeCompare(b.ende));
+    const rq = list.filter((b) => b.rechnung === 'angefordert' && b.status !== 'storniert').sort(sortAsc);
+    return { soonL, rev, paid, monL, outL, rq };
+  }
+  function openInfo(title, intro, groups) { state.info = { title, intro, groups }; render(); window.scrollTo(0, 0); }
+  function closeInfo() { state.info = null; render(); }
+  function viewInfo() {
+    const I = state.info;
+    const bookRow = (b, g) => {
+      const offen = Math.max(0, b.preis - b.anzahlung);
+      const money = g.mode === 'kaut' ? 'Kaution ' + eur(b.kaution) : 'Preis ' + eur(b.preis) + ' · bezahlt ' + eur(Math.min(b.anzahlung, b.preis)) + ' · offen ' + eur(offen);
+      const row = h('div', { class: 'brow' + (g.pickup ? ' clickable' : ''), style: '--pc:' + bookCatColor(b), onclick: g.pickup ? () => { state.info = null; openPickup(b); } : null }, h('i'), h('div', { class: 'bcol' },
+        h('div', {}, h('b', {}, b.artikel || 'Ohne Artikel'), ' – ' + (b.name || 'Ohne Name'), sperrMatch(b) ? ' 🚫' : ''),
+        h('div', { class: 'bt' }, h('b', {}, fmtShort(b.start)), b.ende !== b.start ? ' – ' + fmtShort(b.ende) : '', b.abholzeit ? ' · ab ' + b.abholzeit : ''),
+        h('div', { class: 'bt' }, money),
+        g.retBtn ? h('button', { class: 'cb ret', style: 'margin-top:6px', onclick: async (ev) => { ev.stopPropagation(); await patchBooking(b, { status: 'zurueck', statusVorher: b.status }); I.groups.forEach((x) => { x.rows = x.rows.filter((r) => r.id !== b.id); }); render(); toast('Als zurückgebracht markiert'); } }, 'Als zurückgebracht markieren') : null),
+        g.pickup ? h('span', { class: 'pickupTag' }, 'Abholung ›') : null);
+      return row;
+    };
+    return h('div', { class: 'ov', id: 'infoov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, I.title), h('button', { class: 'btn sec', onclick: closeInfo }, 'Schließen')),
+      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, I.intro),
+      I.groups.map((g) => h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, g.title),
+        g.rows.length ? g.rows.map((b) => bookRow(b, g)) : h('div', { class: 'pextra' }, 'Keine Einträge.')))));
+  }
+  function statsBox() {
+    const s = stats(), box = h('div', { class: 'stats' });
+    const mname = state.cursor.toLocaleDateString('de-DE', { month: 'long' });
+    const reveal = Date.now() < state.revealUntil;
+    box.append(
+      h('div', { class: 'stat tap', onclick: () => openInfo('Abholung', 'Buchungen, die in den nächsten 7 Tagen beginnen (ohne stornierte und zurückgegebene). Antippen öffnet die Abholung.', [{ title: 'In den nächsten 7 Tagen', rows: s.soonL, mode: 'preis', pickup: true }]) },
+        h('b', {}, s.soonL.length), h('span', {}, 'Abholung in den nächsten 7 Tagen'), h('em', {}, 'Details ›')),
+      h('div', { class: 'stat tap', onclick: () => {
+        if (reveal) openInfo('Gebucht im ' + mname, 'Summe der Gesamtpreise aller Buchungen, die im ' + mname + ' beginnen. Bezahlt sind bisher ' + eur(s.paid) + ' (Anzahlungen), offen sind ' + eur(s.rev - s.paid) + '. Der Monat folgt dem Kalender in der Monatsansicht.', [{ title: 'Buchungen im ' + mname, rows: s.monL, mode: 'preis', pickup: true }]);
+        else { state.revealUntil = Date.now() + 10000; render(); setTimeout(() => { if (Date.now() >= state.revealUntil) render(); }, 10200); }
+      } }, h('b', {}, reveal ? eur(s.rev) : '•••• €'), h('span', {}, 'Gebucht im ' + mname), h('em', {}, reveal ? 'Details ›' : 'Antippen zum Anzeigen')));
+    if (s.outL.length) box.append(h('div', { class: 'stat tap wide', onclick: () => openInfo('Noch nicht zurückgebracht', 'Diese Artikel sind abgeholt und noch offen – hier siehst du, was du noch zurückerwartest.', [{ title: 'Noch offen', rows: s.outL, mode: 'preis', retBtn: true, pickup: true }]) },
+      h('b', {}, s.outL.length), h('span', {}, 'Noch nicht zurückgebracht'), h('em', {}, 'Details ›')));
+    if (s.rq.length) box.append(h('div', { class: 'stat tap wide rq', onclick: () => openInfo('Rechnungen offen', 'Diese Buchungen sind zum Rechnungschreiben vorgemerkt. Sag Claude im Chat „Rechnungen schreiben".', [{ title: 'Vorgemerkt', rows: s.rq, mode: 'preis', pickup: true }]) },
+      h('b', {}, s.rq.length + (s.rq.length === 1 ? ' Rechnung' : ' Rechnungen') + ' vorgemerkt'), h('span', {}, 'Im Chat „Rechnungen schreiben" sagen'), h('em', {}, 'Details ›')));
+    return box;
+  }
+
+  // --- Sperrliste und Bestand bearbeiten ---
+  async function saveSperre(list) {
+    await DB.replaceAll('sperrliste', list);
+    state.sperrAt = nowIso(); await DB.setMeta('sperrAt', state.sperrAt);
+    await markDirty(); await load(); render();
+  }
+  async function saveArts(list) {
+    await DB.replaceAll('artikel', list);
+    state.artikelAt = nowIso(); await DB.setMeta('artikelAt', state.artikelAt);
+    await markDirty(); await load(); render();
+  }
+  function openSperr(pre) { state.menu = false; state.sperrOpen = true; state.sperrPre = pre || null; state.sperrDelArm = null; render(); window.scrollTo(0, 0); }
+  function viewSperr() {
+    const pre = state.sperrPre || {}; state.sperrPre = null;
+    const nameI = h('input', { class: 'inp', type: 'text', placeholder: 'Name', value: pre.name || '' });
+    const telI = h('input', { class: 'inp', type: 'text', placeholder: 'Telefon (optional)', value: pre.telefon || '' });
+    const grundI = h('input', { class: 'inp', type: 'text', placeholder: 'Grund (optional)' });
+    const add = async () => {
+      const name = nameI.value.trim(), telefon = telI.value.trim(), grund = grundI.value.trim();
+      if (!name && !telefon) { toast('Name oder Telefon angeben'); return; }
+      const slug = (name || telefon).toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-+|-+$/g, '') || 'kunde';
+      await saveSperre(state.sperre.concat([{ id: slug + '-' + Date.now().toString(36), name, telefon, grund, erstellt: iso(new Date()) }]));
+      toast('Zur Sperrliste hinzugefügt');
+    };
+    const list = h('div', { class: 'slip pad' },
+      state.sperre.length ? state.sperre.map((e) => h('div', { class: 'r' },
+        h('span', { style: 'flex:1;min-width:0' }, h('b', { style: 'font-size:15px;text-align:left' }, e.name || '(ohne Namen)'), e.telefon ? ' · ' + e.telefon : '', e.grund ? h('div', { class: 'pextra', style: 'margin:2px 0 0' }, e.grund) : null),
+        h('button', { class: 'cb sperr', style: 'flex:none', onclick: async () => {
+          if (state.sperrDelArm !== e.id) { state.sperrDelArm = e.id; render(); return; }
+          state.sperrDelArm = null; await saveSperre(state.sperre.filter((x) => x.id !== e.id)); toast('Entfernt');
+        } }, state.sperrDelArm === e.id ? 'Wirklich entfernen?' : 'Entfernen')))
+        : h('div', { class: 'empty' }, 'Noch keine gesperrten Kunden.'));
+    return h('div', { class: 'ov', id: 'sperrov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Sperrliste'), h('button', { class: 'btn', onclick: () => { state.sperrOpen = false; render(); } }, 'Fertig')),
+      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, 'Buchungen von Kunden auf dieser Liste werden mit 🚫 markiert und beim Eintragen gemeldet.'),
+      h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, 'Kunde sperren'),
+        h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, nameI, telI, grundI, h('button', { class: 'btn', onclick: add }, 'Hinzufügen'))),
+      list));
+  }
+  function viewBestandEdit() {
+    const byCat = {};
+    state.arts.forEach((a) => { (byCat[a.kategorie] = byCat[a.kategorie] || []).push(a); });
+    const cats = Object.keys(byCat).sort((x, y) => byCat[x][0].sort - byCat[y][0].sort);
+    const groups = cats.map((c) => h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, c),
+      byCat[c].map((a) => h('div', { class: 'r' },
+        h('span', { style: 'flex:1;min-width:0;word-break:break-word' }, a.name),
+        h('input', { type: 'number', min: '0', value: a.menge == null ? 0 : a.menge, class: 'inp bestandN', onchange: async (ev) => {
+          const n = parseInt(ev.target.value, 10); if (isNaN(n) || n < 0) return;
+          await saveArts(state.arts.map((x) => (x.id === a.id ? Object.assign({}, x, { menge: n }) : x))); toast('Gespeichert');
+        } })))));
+    const nameI = h('input', { class: 'inp', type: 'text', placeholder: 'Neuer Artikel (Name)' });
+    const catS = document.createElement('select'); catS.className = 'inp';
+    cats.concat(['Sonstiges']).filter((v, i, a2) => a2.indexOf(v) === i).forEach((c) => { const o = document.createElement('option'); o.value = c; o.textContent = c; catS.append(o); });
+    const mI = h('input', { class: 'inp', type: 'number', min: '0', value: '1', placeholder: 'Menge' });
+    return h('div', { class: 'ov', id: 'bestandov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Bestand bearbeiten'), h('button', { class: 'btn', onclick: () => { state.bestandOpen = false; render(); } }, 'Fertig')),
+      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, 'Anzahl je Artikel ändern, wird direkt gespeichert und beim Abgleichen nach Drive übertragen.'),
+      groups.length ? groups : h('div', { class: 'empty' }, 'Keine Artikel hinterlegt.'),
+      h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, 'Artikel hinzufügen'),
+        h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, nameI, catS, mI, h('button', { class: 'btn', onclick: async () => {
+          const name = nameI.value.trim(); if (!name) { toast('Name fehlt'); return; }
+          if (state.arts.some((a) => a.name.toLowerCase() === name.toLowerCase())) { toast('Gibt es schon'); return; }
+          const mx = state.arts.reduce((m, a) => Math.max(m, a.sort || 0), 0);
+          await saveArts(state.arts.concat([{ id: name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-+|-+$/g, '') || 'artikel-' + Date.now(), name, kategorie: catS.value, menge: Math.max(0, parseInt(mI.value, 10) || 0), sort: mx + 1, enthaelt: null }]));
+          toast('Artikel hinzugefügt');
+        } }, 'Hinzufügen')))));
+  }
+
+  // --- Logo ändern (nur auf diesem Gerät) ---
+  function pickLogo() {
+    const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*';
+    f.addEventListener('change', () => {
+      const file = f.files && f.files[0]; if (!file) return;
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = async () => {
+        const c = document.createElement('canvas'), S = 256, r = Math.min(img.width, img.height);
+        c.width = S; c.height = S;
+        c.getContext('2d').drawImage(img, (img.width - r) / 2, (img.height - r) / 2, r, r, 0, 0, S, S);
+        URL.revokeObjectURL(url);
+        state.logo = c.toDataURL('image/jpeg', 0.85); await DB.setMeta('logo', state.logo); render(); toast('Logo geändert');
+      };
+      img.onerror = () => toast('Bild nicht lesbar');
+      img.src = url;
+    });
+    f.click();
+  }
+  async function resetLogo() { state.logo = null; await DB.setMeta('logo', null); render(); toast('Logo zurückgesetzt'); }
 
   // ===== Preisliste 2026 (Stand 10/2026) =====
   const TIERS = [['Mo–Do', '1 Tag Mo–Do'], ['Fr–So / Feiertag', '1 Tag Fr–So / Feiertag'], ['Fr–Sa / Sa–So', 'Wochenendpaket Fr–Sa / Sa–So'], ['Fr–So ganzes WE', 'Wochenendpaket Fr–So']];
@@ -1214,12 +1534,13 @@
     app.replaceChildren();
     const wrap = h('div', { class: 'wrap' });
     wrap.append(h('header', {},
-      h('img', { class: 'logoimg', src: 'logo.jpg', alt: 'müllers-MietXpress' }),
+      h('img', { class: 'logoimg', src: state.logo || 'logo.jpg', alt: 'müllers-MietXpress' }),
       h('h1', {}, 'MietXpress'),
       h('span', { class: 'net ' + (state.online ? 'on' : 'off') }, state.online ? 'Online' : 'Offline'),
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
+    if (state.ready && state.view !== 'preise' && state.bookings.length) wrap.append(statsBox());
     wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['liste', 'Liste'], ['bestand', 'Bestand'], ['preise', 'Preise']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
@@ -1242,6 +1563,10 @@
     if (state.menu) app.append(viewMenu());
     if (state.edit) app.append(viewEdit());
     if (state.paste) app.append(viewPaste());
+    if (state.pickup) app.append(viewPickup());
+    if (state.info) app.append(viewInfo());
+    if (state.sperrOpen) app.append(viewSperr());
+    if (state.bestandOpen) app.append(viewBestandEdit());
     window.scrollTo(0, y);
   }
 
