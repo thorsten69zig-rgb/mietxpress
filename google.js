@@ -24,22 +24,29 @@ const GCAL = (function () {
   }
 
   // Muss durch einen Fingertipp ausgelöst werden (sonst blockiert iOS das Anmeldefenster)
-  async function signIn() {
-    if (token && Date.now() < tokenExp) return token;
-    await loadGsi();
-    return new Promise((resolve, reject) => {
-      if (!tokenClient) {
-        tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPE, callback: () => {} });
-      }
-      tokenClient.callback = (r) => {
-        if (r.error) return reject(new Error(r.error_description || r.error));
-        token = r.access_token;
-        tokenExp = Date.now() + ((Number(r.expires_in) || 3600) - 60) * 1000;
-        resolve(token);
-      };
-      tokenClient.error_callback = (e) => reject(new Error(e && e.type === 'popup_closed' ? 'Anmeldung abgebrochen' : 'Anmeldung fehlgeschlagen'));
-      tokenClient.requestAccessToken({ prompt: '' });
-    });
+  let pending = null;
+  function signIn() {
+    if (token && Date.now() < tokenExp) return Promise.resolve(token);
+    if (pending) return pending;
+    pending = (async () => {
+      await loadGsi();
+      return new Promise((resolve, reject) => {
+        if (!tokenClient) {
+          tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPE, callback: () => {} });
+        }
+        tokenClient.callback = (r) => {
+          if (r.error) return reject(new Error(r.error_description || r.error));
+          token = r.access_token;
+          tokenExp = Date.now() + ((Number(r.expires_in) || 3600) - 60) * 1000;
+          resolve(token);
+        };
+        tokenClient.error_callback = (e) => reject(new Error(e && e.type === 'popup_closed' ? 'Anmeldung abgebrochen' : 'Anmeldung fehlgeschlagen'));
+        tokenClient.requestAccessToken({ prompt: '' });
+      });
+    })();
+    const clear = () => { pending = null; };
+    pending.then(clear, clear);
+    return pending;
   }
 
   function signOut() {

@@ -30,6 +30,8 @@
   const fmtD = (s) => { const d = parse(s); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.'; };
   const fmtFull = (s) => parse(s).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
   const wd = (s) => parse(s).toLocaleDateString('de-DE', { weekday: 'short' });
+  const eur0 = (n) => (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const isoWeek = (d) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn); const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t - y0) / 86400000 + 1) / 7); };
   const eur = (n) => (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
   state.cursor = new Date(today0().getFullYear(), today0().getMonth(), 1);
@@ -197,6 +199,7 @@
     const linked = new Set(state.bookings.filter((b) => b.gcalEventId).map((b) => b.gcalEventId));
     state.cal.events.forEach((ev) => {
       if (state.cal.sel.indexOf(ev.cal) < 0) return;
+      if (/^kalenderwoche\s*\d+/i.test(ev.title)) return; // KW steht jetzt links im Monatsraster
       if (linked.has(ev.id.slice(ev.cal.length + 1))) return; // gehört zu einer Buchung, die schon als Buchung zu sehen ist
       let d = parse(ev.start);
       const end = parse(ev.ende);
@@ -426,38 +429,59 @@
   function money(label, val) { return h('div', {}, h('small', {}, label), h('b', {}, val)); }
   function row(label, val) { return val ? h('div', {}, h('span', {}, label + ': '), val) : null; }
 
-  function detail(b) {
-    const stop = (e) => e.stopPropagation();
-    const sp = sperrMatch(b);
-    return h('div', { class: 'det' },
-      sp ? h('div', {}, '🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : '')) : null,
-      b.telefon ? h('div', {}, h('span', {}, 'Telefon: '), h('a', { href: 'tel:' + b.telefon.replace(/\s+/g, ''), onclick: stop }, b.telefon)) : null,
-      b.adresse ? h('div', {}, h('span', {}, 'Adresse: '),
-        h('a', { href: 'https://maps.apple.com/?q=' + encodeURIComponent(b.adresse), onclick: stop }, b.adresse)) : null,
-      row('Abholung', b.abholzeit), row('Rückgabe', b.rueckzeit),
-      row('Quelle', b.plattform),
-      b.kaution > 0 ? row('Kaution', eur(b.kaution) + ' (' + (KAUT[b.kautionStatus] || b.kautionStatus) + ')') : null,
-      row('Notiz', b.notiz),
-      b.status !== 'storniert' ? h('div', {}, h('span', {}, 'Kalender: '), b.gcalEventId || b.kalender === 'ja' ? '✓ eingetragen' : (b.kalender === 'abweichend' ? '⚠ Kalender abweichend' : (state.calWrite ? 'wird beim Abgleichen eingetragen' : 'nicht eingetragen'))) : null,
-      actions(b)
-    );
+  function dueLabel(b) {
+    const t = today0(), ds = Math.round((parse(b.start) - t) / 864e5), de = Math.round((parse(b.ende || b.start) - t) / 864e5);
+    if (b.status === 'storniert') return { t: 'storniert', c: '' };
+    if (ds > 1) return { t: 'in ' + ds + ' Tagen', c: '' };
+    if (ds === 1) return { t: 'morgen', c: 'due' };
+    if (ds === 0) return { t: 'heute', c: 'due' };
+    if (de >= 0) return { t: 'läuft gerade', c: 'due' };
+    if (de === -1) return { t: 'gestern', c: 'past' };
+    return { t: 'vor ' + (-de) + ' Tagen', c: 'past' };
   }
+  const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+  const hhmm = (t) => t ? t + ' Uhr' : 'Zeit offen';
 
   function card(b) {
-    const open = !!state.open[b.id];
+    const stop = (e) => e.stopPropagation();
     const rest = Math.max(0, b.preis - b.anzahlung);
-    return h('div', {
-      class: 'card' + (b.status === 'storniert' ? ' cancel' : ''), style: '--pc:' + bookCatColor(b),
-      onclick: () => { state.open[b.id] = !open; render(); }
-    },
+    const kautOpen = b.kaution > 0 && b.kautionStatus !== 'erhalten' && b.kautionStatus !== 'zurueck' ? b.kaution : 0;
+    const total = rest + kautOpen;
+    const due = dueLabel(b);
+    const sp = sperrMatch(b);
+    const days = Math.round((parse(b.ende || b.start) - parse(b.start)) / 864e5) + 1;
+    const kLabel = b.kaution > 0 ? 'Kaution · ' + (b.kautionStatus === 'keine' ? 'Offen' : (KAUT[b.kautionStatus] || b.kautionStatus)) : 'Kaution';
+    const calOk = b.gcalEventId || b.kalender === 'ja';
+    const payParts = [rest > 0 ? 'Rest ' + eur0(rest) : null, kautOpen > 0 ? 'Kaution ' + eur0(kautOpen) : null].filter(Boolean).join(' + ');
+    const payOpen = (b.status === 'angefragt' || b.status === 'bestaetigt');
+    return h('div', { class: 'card' + (b.status === 'storniert' ? ' cancel' : ''), style: '--pc:' + bookCatColor(b) },
       h('div', { class: 'stripe' }),
       h('div', { class: 'body' },
-        h('div', { class: 'top' }, h('span', { class: 'when' }, fmtRange(b)),
+        h('div', { class: 'top' }, h('span', { class: 'when ' + due.c }, due.t),
           h('span', { class: 'chip st-' + b.status }, STATUS[b.status] || b.status)),
-        h('div', { class: 'name' }, b.name || '(ohne Name)', sperrMatch(b) ? ' 🚫' : ''),
-        h('div', { class: 'art' }, b.artikel),
-        b.preis > 0 ? h('div', { class: 'money' }, money('Preis', eur(b.preis)), money('Anzahlung', eur(b.anzahlung)), money('Offen', eur(rest))) : null,
-        open ? detail(b) : null));
+        h('div', { class: 'name' }, b.artikel || '(ohne Artikel)'),
+        h('div', { class: 'art' }, (b.name || '(ohne Name)') + (sp ? ' 🚫' : '')),
+        h('div', { class: 'tl' }, h('b', {}, 'Abholung'), ' ' + wd(b.start) + ' ' + fmtD(b.start) + ' · ' + hhmm(b.abholzeit || b.zeit)),
+        h('div', { class: 'tl' }, h('b', {}, 'Rückgabe'), ' ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start) + ' · ' + hhmm(b.rueckzeit), h('span', { class: 'dayc' }, days + (days === 1 ? ' Tag' : ' Tage'))),
+        h('div', { class: 'money' }, money('Gesamtpreis', eur0(b.preis)), money('Anzahlung', eur0(b.anzahlung)), money(kLabel, b.kaution > 0 ? eur0(b.kaution) : '—')),
+        payOpen && total > 0 ? h('div', { class: 'pay' }, h('div', {}, h('div', {}, 'Bei Abholung zu zahlen'), h('small', {}, payParts)), h('b', {}, eur0(total))) : null,
+        payOpen && total === 0 && b.preis > 0 ? h('div', { class: 'pay ok' }, '✓ Alles bezahlt') : null,
+        (b.plattform || b.adresse) ? h('div', { class: 'srcrow' },
+          b.plattform ? h('span', { class: 'plat' }, cap(b.plattform)) : null,
+          b.adresse ? h('a', { href: 'https://maps.apple.com/?q=' + encodeURIComponent(b.adresse) }, b.adresse) : null) : null,
+        h('div', { class: 'cbrow' },
+          h('button', { class: 'cb abh', onclick: () => openPickup(b) }, 'Abholung'),
+          h('button', { class: 'cb mv', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag'),
+          h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, 'Nachricht')),
+        h('div', { class: 'rrow' }, rechBtn(b),
+          b.status !== 'storniert' ? h('span', { class: 'calst ' + (calOk ? 'ok' : (b.kalender === 'abweichend' ? 'warn' : 'no')) },
+            calOk ? '✓ im Kalender' : (b.kalender === 'abweichend' ? '⚠ Kalender abweichend' : '✕ noch nicht im Kalender')) : null),
+        h('div', { class: 'since' }, b.erstellt ? 'Eingetragen am ' + fmtDE(b.erstellt) : 'Eintragsdatum unbekannt'),
+        h('div', { class: 'det' },
+          sp ? h('div', {}, '🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : '')) : null,
+          b.telefon ? h('div', {}, h('span', {}, 'Telefon: '), h('a', { href: 'tel:' + b.telefon.replace(/\s+/g, '') }, b.telefon)) : null,
+          b.notiz ? h('div', { class: 'note' }, b.notiz) : null,
+          actions(b))));
   }
 
   const sortByStart = (a, b) => (a.start + (a.zeit || '')).localeCompare(b.start + (b.zeit || ''));
@@ -524,6 +548,7 @@
     main.append(h('div', { class: 'mnav' },
       h('button', { 'aria-label': 'Vorheriger Monat', onclick: () => gotoMonth(y, mo - 1) }, '‹'),
       h('b', {}, MONTHS[mo] + ' ' + y),
+      h('button', { class: 'todaybtn', onclick: () => { const t = today0(); state.cursor = new Date(t.getFullYear(), t.getMonth(), 1); state.sel = iso(t); render(); window.scrollTo(0, 0); } }, 'Heute'),
       h('button', { 'aria-label': 'Nächster Monat', onclick: () => gotoMonth(y, mo + 1) }, '›')));
     // Wischen: nach links = nächster Monat, nach rechts = vorheriger
     let sx = null, sy = null;
@@ -535,6 +560,7 @@
     }, { passive: true });
 
     const grid = h('div', { class: 'grid' });
+    grid.append(h('div', { class: 'dow kw' }, 'KW'));
     DOW.forEach((d) => grid.append(h('div', { class: 'dow' }, d)));
     const lead = (new Date(y, mo, 1).getDay() + 6) % 7;
     const days = new Date(y, mo + 1, 0).getDate();
@@ -544,6 +570,7 @@
     const ems = evMap();
     const ts = iso(today0());
     for (let i = 0; i < rows * 7; i++) {
+      if (i % 7 === 0) grid.append(h('div', { class: 'kwc' }, isoWeek(addDays(start, i + 3))));
       const d = addDays(start, i), ds = iso(d), list = map[ds] || [], evs = (ems[ds] || []).slice().sort(byKind);
       const bShown = list.length;
       const eShown = evs.length;
@@ -718,7 +745,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 18')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 19')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -727,7 +754,21 @@
   const nowIso = () => new Date().toISOString();
   const newId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  async function markDirty() { state.dirty++; await DB.setMeta('dirty', state.dirty); }
+  async function markDirty() { state.dirty++; await DB.setMeta('dirty', state.dirty); schedulePush(); }
+  // Automatisch abgleichen (Drive + Kalender): Anmeldefenster nur beim Fingertipp, danach läuft es still
+  function warmToken() {
+    if (!state.drive.id || !state.online || GCAL.isSignedIn()) return;
+    state.warm = GCAL.signIn(); state.warm.catch(() => {});
+  }
+  let pushTimer = null;
+  function schedulePush() {
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+      if (!state.drive.id || !state.online || state.drive.busy) return;
+      if (GCAL.isSignedIn()) driveSync(true);
+      else if (state.warm) state.warm.then(() => driveSync(true)).catch(() => {});
+    }, 1500);
+  }
 
   async function saveBooking(b) {
     const n = norm(Object.assign({}, b, { geaendert: nowIso() }));
@@ -739,12 +780,14 @@
     return n;
   }
   async function patchBooking(b, p) {
+    warmToken();
     const extra = {};
     if (p.status === 'storniert' && b.status !== 'storniert') extra.statusVorher = b.status;
     await saveBooking(Object.assign({}, b, p, extra));
     render();
   }
   async function removeBooking(b) {
+    warmToken();
     await DB.remove('buchungen', b.id);
     if (b.gcalEventId && state.calDel.indexOf(b.gcalEventId) < 0) await setCalDel(state.calDel.concat([b.gcalEventId]));
     state.tomb[b.id] = nowIso();
@@ -783,9 +826,6 @@
       b.kaution > 0 ? h('div', { class: 'arow' }, ['offen', 'erhalten', 'zurueck'].map((k) =>
         h('button', { class: b.kautionStatus === k ? 'on' : '', onclick: () => patchBooking(b, { kautionStatus: k }) }, 'Kaution ' + KAUT[k].toLowerCase()))) : null,
       h('div', { class: 'arow' },
-        h('button', { onclick: () => openPickup(b) }, '📦 Abholung'),
-        h('button', { onclick: () => openMsgs(b) }, '💬 Nachricht'),
-        rechBtn(b),
         h('button', { onclick: () => openEdit(b) }, 'Bearbeiten'),
         h('button', { class: 'del', onclick: delClick }, 'Buchung löschen')));
   }
@@ -850,6 +890,7 @@
   }
 
   async function saveEdit() {
+    warmToken();
     const e = state.edit, d = e.d;
     d.positionen = d.positionen.filter((p) => p.artikel);
     e.err = null;
@@ -1487,6 +1528,7 @@
     });
   }
   async function savePaste() {
+    warmToken();
     const e = state.paste;
     e.err = null;
     let items;
