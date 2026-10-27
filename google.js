@@ -93,6 +93,7 @@ const GCAL = (function () {
   const evPath = (cal, id) => '/calendars/' + encodeURIComponent(cal) + '/events' + (id ? '/' + encodeURIComponent(id) : '');
   const createEvent = (cal, ev) => calWrite('POST', evPath(cal), ev);
   const updateEvent = (cal, id, ev) => calWrite('PUT', evPath(cal, id), ev);
+  const patchEvent = (cal, id, ev) => calWrite('PATCH', evPath(cal, id), ev);
   const deleteEvent = (cal, id) => calWrite('DELETE', evPath(cal, id));
 
   async function listCalendars() {
@@ -149,5 +150,5 @@ const GCAL = (function () {
     return out;
   }
 
-  return { signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent, createEvent, updateEvent, deleteEvent };
+  return { signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent, createEvent, updateEvent, patchEvent, deleteEvent };
 })();

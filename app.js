@@ -18,7 +18,8 @@
     cal: { cals: [], sel: [], events: [], at: null, connected: false, busy: false, err: null },
     drive: { id: null, at: null, busy: false, err: null, msg: null },
     dirty: 0, tomb: {}, artikelAt: null, sperrAt: null, edit: null, paste: null, priceQ: '', pvon: '', pbis: '', pickup: null, info: null, chk: {}, revealUntil: 0, sperrOpen: false, sperrPre: null, sperrDelArm: null, bestandOpen: false, logo: null, delArm: null,
-    calWrite: false, calDel: [], synced: false, autoAt: 0
+    calWrite: false, calDel: [], synced: false, autoAt: 0,
+    weekStart: null, selA: null, selB: null, gev: null
   };
 
   // ===== Hilfsfunktionen =====
@@ -37,6 +38,25 @@
   state.cursor = new Date(today0().getFullYear(), today0().getMonth(), 1);
   state.sel = iso(today0());
   state.von = iso(today0());
+  state.weekStart = iso(addDays(today0(), -((today0().getDay() + 6) % 7)));
+  state.selA = state.selB = iso(today0());
+
+  // ===== Feiertage NRW (fest eingebaut, berechnet) =====
+  function easterSunday(y) {
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const hh = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - hh - k) % 7, m = Math.floor((a + 11 * hh + 22 * l) / 451);
+    const mo = Math.floor((hh + l - 7 * m + 114) / 31), da = ((hh + l - 7 * m + 114) % 31) + 1;
+    return new Date(y, mo - 1, da);
+  }
+  function nrwHolidays(y) {
+    const e = easterSunday(y), at = (n) => iso(addDays(e, n)), out = [];
+    const add = (ds, t) => out.push({ id: 'nrw:' + ds, cal: 'nrw', title: t, start: ds, ende: ds, zeit: '', ort: '', typ: 'holiday' });
+    add(y + '-01-01', 'Neujahr'); add(at(-2), 'Karfreitag'); add(at(0), 'Ostersonntag'); add(at(1), 'Ostermontag');
+    add(y + '-05-01', 'Tag der Arbeit'); add(at(39), 'Christi Himmelfahrt'); add(at(49), 'Pfingstsonntag'); add(at(50), 'Pfingstmontag'); add(at(60), 'Fronleichnam');
+    add(y + '-10-03', 'Tag der Deutschen Einheit'); add(y + '-10-31', 'Reformationstag / Halloween'); add(y + '-11-01', 'Allerheiligen');
+    add(y + '-12-25', '1. Weihnachtstag'); add(y + '-12-26', '2. Weihnachtstag');
+    return out;
+  }
 
   function h(tag, attrs, ...kids) {
     const el = document.createElement(tag);
@@ -197,8 +217,13 @@
   function evMap() {
     const m = {};
     const linked = new Set(state.bookings.filter((b) => b.gcalEventId).map((b) => b.gcalEventId));
-    state.cal.events.forEach((ev) => {
-      if (state.cal.sel.indexOf(ev.cal) < 0) return;
+    const gInfo = new Set(state.cal.events.filter((e) => state.cal.sel.indexOf(e.cal) >= 0 && evKind(e) === 'info').map((e) => e.start));
+    const ys = new Set([state.cursor.getFullYear(), parse(state.weekStart).getFullYear(), today0().getFullYear()]);
+    let hol = [];
+    ys.forEach((y) => { hol = hol.concat(nrwHolidays(y)); });
+    hol = hol.filter((x) => !gInfo.has(x.start));
+    state.cal.events.concat(hol).forEach((ev) => {
+      if (ev.cal !== 'nrw' && state.cal.sel.indexOf(ev.cal) < 0) return;
       if (/^kalenderwoche\s*\d+/i.test(ev.title)) return; // KW steht jetzt links im Monatsraster
       if (linked.has(ev.id.slice(ev.cal.length + 1))) return; // gehört zu einer Buchung, die schon als Buchung zu sehen ist
       let d = parse(ev.start);
@@ -439,6 +464,12 @@
     if (de === -1) return { t: 'gestern', c: 'past' };
     return { t: 'vor ' + (-de) + ' Tagen', c: 'past' };
   }
+  function isKombi(b) {
+    const p = Avail.positionsOf(b, state.arts);
+    if (p.length !== 2) return false;
+    const n = p.map((x) => x.artikel);
+    return (n[0].indexOf('Hüpfburg') === 0 && n[1] === 'PartyBox JBL 520') || (n[1].indexOf('Hüpfburg') === 0 && n[0] === 'PartyBox JBL 520');
+  }
   const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
   const hhmm = (t) => t ? t + ' Uhr' : 'Zeit offen';
 
@@ -458,7 +489,7 @@
       h('div', { class: 'stripe' }),
       h('div', { class: 'body' },
         h('div', { class: 'top' }, h('span', { class: 'when ' + due.c }, due.t),
-          h('span', { class: 'chip st-' + b.status }, STATUS[b.status] || b.status)),
+          h('span', { class: 'tr' }, isKombi(b) ? h('span', { class: 'kombi' }, 'KOMBI') : null, h('span', { class: 'chip st-' + b.status }, STATUS[b.status] || b.status))),
         h('div', { class: 'name' }, b.artikel || '(ohne Artikel)'),
         h('div', { class: 'art' }, (b.name || '(ohne Name)') + (sp ? ' 🚫' : '')),
         h('div', { class: 'tl' }, h('b', {}, 'Abholung'), ' ' + wd(b.start) + ' ' + fmtD(b.start) + ' · ' + hhmm(b.abholzeit || b.zeit)),
@@ -496,6 +527,7 @@
   // Ereignis-Art: MietXpress-Kalender, Privat, Geburtstag, Feiertage/Kalenderwochen
   function evKind(ev) {
     const cal = state.cal.cals.find((c) => c.id === ev.cal);
+    if (ev.cal === 'nrw') return 'info';
     const nm = cal ? cal.name : '';
     if (ev.typ === 'birthday' || /geburtstag|🎂/i.test(ev.title) || /geburtstag|birthday/i.test(nm)) return 'bday';
     if (/mietxpress/i.test(nm)) return 'mx';
@@ -605,10 +637,186 @@
     dayEv.forEach((ev) => {
       const k = evKind(ev);
       if (k !== lastK) { main.append(h('div', { class: 'grp grp-' + k }, KIND_LABEL[k])); lastK = k; }
-      main.append(h('div', { class: 'evrow ev-' + k, style: '--pc:' + evColor(ev) },
-        h('b', {}, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')),
-        h('div', { class: 'art' }, [ev.zeit || 'ganztägig', ev.start !== ev.ende ? fmtD(ev.start) + ' – ' + fmtD(ev.ende) : '', ev.ort].filter(Boolean).join(' · '))));
+      main.append(evRow(ev));
     });
+    if (state.cal.connected) main.append(h('button', { class: 'btn sec addev', onclick: () => openGev(null, state.sel) }, '+ Termin im Google Kalender'));
+  }
+
+  // ===== Google-Termine anlegen / ändern / löschen =====
+  function writableCals() { return state.cal.cals.filter((c) => c.access === 'owner' || c.access === 'writer'); }
+  function evEditable(ev) {
+    if (ev.cal === 'nrw' || ev.typ === 'birthday' || ev.typ === 'holiday') return false;
+    const k = evKind(ev);
+    if (k === 'mx' || k === 'bday' || k === 'info') return false;
+    return writableCals().some((c) => c.id === ev.cal);
+  }
+  function evRow(ev) {
+    const k = evKind(ev), can = evEditable(ev);
+    return h('div', Object.assign({ class: 'evrow ev-' + k + (can ? ' tap' : ''), style: '--pc:' + evColor(ev) }, can ? { onclick: () => openGev(ev) } : {}),
+      h('b', {}, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')),
+      h('div', { class: 'art' }, [ev.zeit || 'ganztägig', ev.start !== ev.ende ? fmtD(ev.start) + ' – ' + fmtD(ev.ende) : '', ev.ort].filter(Boolean).join(' · ') + (can ? ' · ✎' : '')));
+  }
+  function openGev(ev, ds) {
+    const wc = writableCals();
+    if (!wc.length) { toast('Kein beschreibbarer Kalender verbunden'); return; }
+    if (ev) {
+      state.gev = { id: ev.id.slice(ev.cal.length + 1), cal: ev.cal, title: ev.title, start: ev.start, ende: ev.ende, zeit: ev.zeit || '', zeitEnde: '', ort: ev.ort || '', err: null, busy: false, arm: false };
+    } else {
+      const pref = wc.find((c) => !/mietxpress|geburtstag|feiertag|kalenderwoche/i.test(c.name) && c.primary) || wc.find((c) => !/mietxpress|geburtstag|feiertag|kalenderwoche/i.test(c.name)) || wc[0];
+      state.gev = { id: null, cal: pref.id, title: '', start: ds || state.sel, ende: ds || state.sel, zeit: '', zeitEnde: '', ort: '', err: null, busy: false, arm: false };
+    }
+    render();
+  }
+  function closeGev() { state.gev = null; render(); }
+  function gevBody(g) {
+    const body = { summary: g.title.trim(), location: g.ort.trim() };
+    if (g.zeit) {
+      const ze = g.zeitEnde || (pad((parseInt(g.zeit.slice(0, 2), 10) + 1) % 24) + g.zeit.slice(2));
+      body.start = { dateTime: g.start + 'T' + g.zeit + ':00', timeZone: 'Europe/Berlin' };
+      body.end = { dateTime: g.ende + 'T' + ze + ':00', timeZone: 'Europe/Berlin' };
+    } else {
+      body.start = { date: g.start };
+      body.end = { date: iso(addDays(parse(g.ende), 1)) };
+    }
+    return body;
+  }
+  async function gevRun(fn) {
+    const g = state.gev;
+    g.busy = true; g.err = null; render();
+    try {
+      await fn();
+      await fetchEvents();
+      state.gev = null;
+    } catch (e) { g.err = e.message || 'Fehler'; g.busy = false; }
+    render();
+  }
+  function gevSave() {
+    const g = state.gev;
+    if (!g.title.trim()) { g.err = 'Bitte einen Titel eingeben.'; render(); return; }
+    if (!g.start) { g.err = 'Bitte ein Datum wählen.'; render(); return; }
+    if (!g.ende || g.ende < g.start) g.ende = g.start;
+    const sign = GCAL.signIn(); // muss direkt im Fingertipp starten
+    gevRun(async () => {
+      await sign;
+      if (g.id) await GCAL.patchEvent(g.cal, g.id, gevBody(g)); else await GCAL.createEvent(g.cal, gevBody(g));
+    });
+  }
+  function gevDelete() {
+    const g = state.gev;
+    if (!g.arm) { g.arm = true; render(); return; }
+    const sign = GCAL.signIn();
+    gevRun(async () => { await sign; await GCAL.deleteEvent(g.cal, g.id); });
+  }
+  function viewGev() {
+    const g = state.gev;
+    const fld = (label, el) => h('label', { class: 'fld' }, h('small', {}, label), el);
+    const wc = writableCals();
+    return h('div', { class: 'ov', id: 'gevov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, g.id ? 'Termin ändern' : 'Neuer Termin'),
+        h('div', { class: 'two' }, h('button', { class: 'btn sec', onclick: closeGev }, 'Abbrechen'), h('button', { class: 'btn', disabled: g.busy ? '' : null, onclick: gevSave }, g.busy ? '…' : 'Speichern'))),
+      g.err ? h('div', { class: 'warnbox err2' }, g.err) : null,
+      h('div', { class: 'box' },
+        fld('Titel', h('input', { class: 'inp', type: 'text', value: g.title, id: 'gevt', autocomplete: 'off', oninput: (e) => { g.title = e.target.value; } })),
+        fld('Kalender', h('select', { class: 'inp', disabled: g.id ? '' : null, onchange: (e) => { g.cal = e.target.value; } },
+          wc.map((c) => h('option', { value: c.id, selected: c.id === g.cal ? '' : null }, c.name)))),
+        h('div', { class: 'two2' },
+          fld('Von', h('input', { class: 'inp', type: 'date', value: g.start, onchange: (e) => { g.start = e.target.value; if (g.ende < g.start) { g.ende = g.start; render(); } } })),
+          fld('Bis', h('input', { class: 'inp', type: 'date', value: g.ende, onchange: (e) => { g.ende = e.target.value; } }))),
+        h('div', { class: 'two2' },
+          fld('Uhrzeit (leer = ganztägig)', h('input', { class: 'inp', type: 'time', value: g.zeit, onchange: (e) => { g.zeit = e.target.value; } })),
+          fld('Ende (optional)', h('input', { class: 'inp', type: 'time', value: g.zeitEnde, onchange: (e) => { g.zeitEnde = e.target.value; } }))),
+        fld('Ort', h('input', { class: 'inp', type: 'text', value: g.ort, oninput: (e) => { g.ort = e.target.value; } }))),
+      g.id ? h('button', { class: 'btn warn', style: 'width:100%;margin-top:12px', disabled: g.busy ? '' : null, onclick: gevDelete }, g.arm ? 'Wirklich löschen? Nochmal tippen' : 'Termin löschen') : null));
+  }
+
+  // ===== Woche =====
+  function pickDay(ds) {
+    if (state.selA === state.selB && ds !== state.selA) { const a = state.selA; state.selA = a < ds ? a : ds; state.selB = a < ds ? ds : a; }
+    else { state.selA = state.selB = ds; }
+    render();
+  }
+  function setWeek(ds) {
+    const d = parse(ds);
+    state.weekStart = iso(addDays(d, -((d.getDay() + 6) % 7)));
+    state.cursor = new Date(parse(state.weekStart).getFullYear(), parse(state.weekStart).getMonth(), 1);
+  }
+  function viewWoche(main) {
+    const ws = parse(state.weekStart), days = [...Array(7)].map((_, i) => iso(addDays(ws, i))), we = days[6];
+    const shiftWeek = (n) => { setWeek(iso(addDays(ws, 7 * n))); state.selA = state.selB = iso(addDays(parse(state.weekStart), 0)); render(); };
+    main.append(h('div', { class: 'mnav wnav' },
+      h('button', { 'aria-label': 'Vorherige Woche', onclick: () => shiftWeek(-1) }, '‹'),
+      h('b', {}, 'KW ' + isoWeek(addDays(ws, 3)) + ' · ' + fmtD(days[0]) + ' – ' + fmtD(we) + '' + we.slice(0, 4)),
+      h('button', { class: 'todaybtn', onclick: () => { setWeek(iso(today0())); state.selA = state.selB = iso(today0()); render(); } }, 'Heute'),
+      h('button', { 'aria-label': 'Nächste Woche', onclick: () => shiftWeek(1) }, '›')));
+    let sx = null, sy = null;
+    main.addEventListener('touchstart', (e) => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; }, { passive: true });
+    main.addEventListener('touchend', (e) => {
+      if (sx == null) return;
+      const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftWeek(dx < 0 ? 1 : -1);
+    }, { passive: true });
+    const ems = evMap(), ts = iso(today0()), active = state.bookings.filter(isActive);
+    const inSel = (ds) => ds >= state.selA && ds <= state.selB;
+    const grid = h('div', { class: 'wgrid' });
+    grid.append(h('div', { class: 'wh corner' }));
+    days.forEach((ds, i) => {
+      const evs = ems[ds] || [], kinds = [...new Set(evs.map(evKind))];
+      grid.append(h('button', { class: 'wh' + (ds === ts ? ' today' : '') + (inSel(ds) ? ' sel' : ''), onclick: () => pickDay(ds) },
+        h('small', {}, DOW[i]), h('b', {}, parse(ds).getDate()),
+        h('span', { class: 'gdots' }, kinds.map((k) => h('i', { style: 'background:' + KCOL[k] })))));
+    });
+    let lastCat = null;
+    state.arts.forEach((a) => {
+      if (a.kategorie !== lastCat) { grid.append(h('div', { class: 'wcat', style: 'background:' + (CATS[a.kategorie] || '#555') }, a.kategorie)); lastCat = a.kategorie; }
+      grid.append(h('div', { class: 'wname' }, a.name));
+      days.forEach((ds) => {
+        const hits = Avail.hitsFor(active, state.arts, a.name, ds, ds);
+        const real = hits.filter((x) => !x.blocker).reduce((t, x) => t + x.anzahl, 0);
+        const blk = hits.filter((x) => x.blocker).length;
+        const clash = a.menge != null && (real > a.menge || (real > 0 && blk > 0));
+        const col = CATS[a.kategorie] || '#555';
+        grid.append(h('button', { class: 'wc' + (real > 0 ? ' busy' : '') + (real === 0 && blk > 0 ? ' blk' : '') + (clash ? ' clash' : '') + (inSel(ds) ? ' insel' : ''), style: '--cc:' + col, onclick: () => pickDay(ds) },
+          real > 0 && (a.menge == null || a.menge > 1 || real > 1) ? String(real) : ''));
+      });
+    });
+    main.append(grid);
+    main.append(h('div', { class: 'tip' }, 'Tipp: Tag antippen, dann einen zweiten Tag für einen Zeitraum. Rote Umrandung = Doppelbuchung.'));
+
+    // Panel
+    const s = state.selA, e = state.selB, one = s === e;
+    const bs = active.filter((b) => b.start <= e && (b.ende || b.start) >= s).sort(sortByStart);
+    const evSeen = {}, evl = [];
+    for (let d = parse(s); iso(d) <= e && evl.length < 60; d = addDays(d, 1)) (ems[iso(d)] || []).forEach((ev) => { if (!evSeen[ev.id]) { evSeen[ev.id] = 1; evl.push(ev); } });
+    evl.sort(byKind);
+    const free = [], part = [];
+    state.arts.forEach((a) => {
+      const st = Avail.status(active, state.arts, a, s, e);
+      if (st.state === 'frei') free.push(a.name);
+      else if (st.state === 'teils') part.push(a.name + (st.menge != null ? ' (' + st.frei + '/' + st.menge + ')' : ''));
+    });
+    const panel = h('div', { class: 'panel' },
+      h('h3', {}, one ? fmtFull(s) : wd(s) + ' ' + fmtD(s) + ' – ' + wd(e) + ' ' + fmtD(e)),
+      h('div', { class: 'psum' }, (free.length + part.length) + ' Artikel frei · ' + bs.length + ' Vermietung' + (bs.length === 1 ? '' : 'en') + ' · ' + evl.length + ' Termin' + (evl.length === 1 ? '' : 'e')));
+    if (bs.length) {
+      panel.append(h('div', { class: 'grp grp-mx' }, 'Vermietet'));
+      bs.forEach((b) => {
+        const nd = Math.round((parse(b.ende || b.start) - parse(b.start)) / 864e5) + 1;
+        const tl = [];
+        if (b.start >= s && b.start <= e) tl.push('↑ Abholung ' + fmtD(b.start) + ' ' + (b.abholzeit || b.zeit || '–'));
+        if ((b.ende || b.start) >= s && (b.ende || b.start) <= e) tl.push('↓ Rückgabe ' + fmtD(b.ende || b.start) + ' ' + (b.rueckzeit || '–'));
+        panel.append(h('div', { class: 'evrow ev-mx tap', style: '--pc:' + KCOL.mx, onclick: () => openEdit(b) },
+          h('b', {}, b.name || '—'), h('span', { class: 'dayc' }, nd + (nd === 1 ? ' Tag' : ' Tage')),
+          h('div', { class: 'art' }, b.artikel || ''), h('div', { class: 'art' }, tl.join(' · '))));
+      });
+    }
+    if (evl.length) {
+      panel.append(h('div', { class: 'grp grp-priv' }, 'Termine aus Google Kalender'));
+      evl.forEach((ev) => panel.append(evRow(ev)));
+    }
+    if (state.cal.connected) panel.append(h('button', { class: 'btn sec addev', onclick: () => openGev(null, s) }, '+ Termin im Google Kalender'));
+    panel.append(h('div', { class: 'grp grp-free' }, 'Frei'));
+    panel.append(h('div', { class: 'fchips' }, free.map((n) => h('span', { class: 'fc' }, n)).concat(part.map((n) => h('span', { class: 'fc part' }, n))), (free.length + part.length) ? null : h('span', { class: 'art' }, 'Nichts frei')));
+    main.append(panel);
   }
 
   function viewListe(main) {
@@ -745,7 +953,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 19')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 20')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1607,13 +1815,13 @@
     const wrap = h('div', { class: 'wrap' });
     wrap.append(h('header', {},
       h('img', { class: 'logoimg', src: state.logo || 'logo.jpg', alt: 'müllers-MietXpress' }),
-      h('h1', {}, 'MietXpress'),
+      h('div', { class: 'ttl' }, h('h1', {}, 'MietXpress'), h('div', { class: 'hdate' }, h('span', {}, today0().toLocaleDateString('de-DE', { weekday: 'long' }) + ' '), h('b', {}, today0().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })))),
       h('span', { class: 'net ' + (state.online ? 'on' : 'off') }, state.online ? 'Online' : 'Offline'),
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
     if (state.ready && state.view !== 'preise' && state.bookings.length) wrap.append(statsBox());
-    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['liste', 'Liste'], ['bestand', 'Bestand'], ['preise', 'Preise']].map((t) =>
+    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Preise']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
     if (state.ready && (state.dirty > 0 || (state.drive.id && !state.synced))) wrap.append(syncBanner());
@@ -1627,6 +1835,7 @@
           h('button', { class: 'btn sec', onclick: async () => { await replaceData(demoData()); render(); } }, 'Mit Beispieldaten ausprobieren'))));
     } else if (state.view === 'monat') viewMonat(main);
     else if (state.view === 'liste') viewListe(main);
+    else if (state.view === 'woche') viewWoche(main);
     else if (state.view === 'preise') viewPreise(main);
     else viewBestand(main);
     wrap.append(main);
@@ -1639,6 +1848,7 @@
     if (state.info) app.append(viewInfo());
     if (state.sperrOpen) app.append(viewSperr());
     if (state.bestandOpen) app.append(viewBestandEdit());
+    if (state.gev) app.append(viewGev());
     window.scrollTo(0, y);
   }
 
