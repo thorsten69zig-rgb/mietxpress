@@ -24,12 +24,13 @@ const GCAL = (function () {
   }
 
   // Muss durch einen Fingertipp ausgelöst werden (sonst blockiert iOS das Anmeldefenster)
-  let pending = null;
+  let pending = null, pendingAt = 0;
   function signIn() {
     if (token && Date.now() < tokenExp) return Promise.resolve(token);
-    if (pending) return pending;
-    pending = (async () => {
-      await loadGsi();
+    if (pending && Date.now() - pendingAt < 15000) return pending; // alter, hängender Versuch (blockiertes Fenster) zählt nicht
+    pendingAt = Date.now();
+    const mine = (async () => {
+      if (!(window.google && google.accounts && google.accounts.oauth2)) await loadGsi(); // bereits geladen: Fenster sofort im Fingertipp öffnen
       return new Promise((resolve, reject) => {
         if (!tokenClient) {
           tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPE, callback: () => {} });
@@ -44,9 +45,10 @@ const GCAL = (function () {
         tokenClient.requestAccessToken({ prompt: '' });
       });
     })();
-    const clear = () => { pending = null; };
-    pending.then(clear, clear);
-    return pending;
+    pending = mine;
+    const clear = () => { if (pending === mine) pending = null; };
+    mine.then(clear, clear);
+    return mine;
   }
 
   function signOut() {
@@ -150,5 +152,6 @@ const GCAL = (function () {
     return out;
   }
 
-  return { signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent, createEvent, updateEvent, patchEvent, deleteEvent };
+  const preload = () => { loadGsi().catch(() => {}); };
+  return { preload, signIn, signOut, isSignedIn, authFetch, listCalendars, listEvents, normEvent, createEvent, updateEvent, patchEvent, deleteEvent };
 })();

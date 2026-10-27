@@ -953,7 +953,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 20')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 21')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1862,12 +1862,13 @@
   render();
   function autoSync() {
     if (!state.ready || !state.drive.id || !state.online || state.drive.busy || state.synced) return;
+    if (!GCAL.isSignedIn()) return; // ohne Fingertipp lässt iOS kein Anmeldefenster zu
     if (Date.now() - state.autoAt < 5 * 60 * 1000) return;
     state.autoAt = Date.now();
     driveSync(true);
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
-  load().then(() => { render(); setTimeout(autoSync, 600); }).catch((e) => {
+  load().then(() => { render(); if (state.cal.connected && state.online && GCAL.preload) GCAL.preload(); setTimeout(autoSync, 600); }).catch((e) => {
     document.getElementById('app').replaceChildren(h('div', { class: 'wrap' }, h('div', { class: 'empty' }, 'Speicher nicht verfügbar: ' + e.message)));
   });
 })();
