@@ -571,6 +571,19 @@
     requestAnimationFrame(() => requestAnimationFrame(run));
     if (!state.fitBound) { state.fitBound = true; window.addEventListener('resize', () => { if (state.view === 'monat') render(); }); }
   }
+  // Kurznamen für die Monatskacheln (Reihenfolge egal, längste Namen werden zuerst ersetzt)
+  const ABBR = [['Hüpfburg Kleines Schloss', 'HB Kl. Schloss'], ['Hüpfburg Schloss', 'HB Schloss'], ['Hüpfburg Slide', 'HB Slide'], ['Hüpfburg Space', 'HB Space'],
+    ['Popcornmaschine Star', 'Popcorn'], ['Zuckerwattenmaschine Sweet', 'Zuckerwatte'], ['Slush Eis Maschine Ninja', 'Slush'], ['Crepes Maschine Paris', 'Crepes'],
+    ['Speisewärmer Eat', 'Speisewärmer'], ['Glühweinkocher/Wasserkocher', 'Glühwein'], ['kukki Cocktail-Toaster', 'Cocktail-Toaster'], ['Aperol Spritz Maschine', 'Aperol'],
+    ['PartyBox JBL 520', 'PartyBox'], ['Nebelmaschine Fog Beamz', 'Nebel'], ['Schneemaschine/Schaumkanone Snow', 'Schnee'], ['LED Lichtanlage', 'LED-Licht'],
+    ['DJ & Party Paket', 'DJ-Paket'], ['Party-Kühlschrank/Akku-Kühlbox', 'Kühlschrank'], ['Bierzeltgarnitur', 'Bierzelt']];
+  function abbrArt(t) {
+    let s = String(t || '');
+    ABBR.slice().sort((x, y) => y[0].length - x[0].length).forEach((p) => {
+      s = s.split(p[0]).join(p[1]);
+    });
+    return s;
+  }
   function shortArt(t) {
     const p = String(t).split(/\s*[,+&]\s*|\s+und\s+/).filter(Boolean);
     return p.length > 1 ? p[0] + ' +' + (p.length - 1) : p[0] || '';
@@ -615,7 +628,7 @@
         list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
           return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '66' },
-            h('span', { class: 'pn' }, b.artikel || b.name || '—'),
+            h('span', { class: 'pn' }, abbrArt(b.artikel) || b.name || '—'),
             (b.start === ds ? (b.abholzeit || b.zeit || '') : (b.ende === ds ? (b.rueckzeit || '') : '')) ? h('span', { class: 'pt' }, (b.start === ds ? '↑ ' + (b.abholzeit || b.zeit) : '↓ ' + b.rueckzeit)) : null,
             b.start === ds && b.preis - b.anzahlung > 0 ? h('span', { class: 'po' }, 'Offen ' + eur(b.preis - b.anzahlung)) : null);
         }),
@@ -952,7 +965,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 22')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 23')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
