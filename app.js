@@ -615,8 +615,7 @@
         list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
           return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '66' },
-            h('span', { class: 'pn' }, b.name || '—'),
-            b.artikel ? h('span', { class: 'pa' }, b.artikel) : null,
+            h('span', { class: 'pn' }, b.artikel || b.name || '—'),
             (b.start === ds ? (b.abholzeit || b.zeit || '') : (b.ende === ds ? (b.rueckzeit || '') : '')) ? h('span', { class: 'pt' }, (b.start === ds ? '↑ ' + (b.abholzeit || b.zeit) : '↓ ' + b.rueckzeit)) : null,
             b.start === ds && b.preis - b.anzahlung > 0 ? h('span', { class: 'po' }, 'Offen ' + eur(b.preis - b.anzahlung)) : null);
         }),
@@ -953,7 +952,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 21')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 22')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
