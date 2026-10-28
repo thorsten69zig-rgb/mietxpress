@@ -651,7 +651,15 @@
     const sel = (map[state.sel] || []).slice().sort(sortByStart);
     main.append(h('h3', {}, fmtFull(state.sel)));
     main.append(h('div', { class: 'grp grp-mx' }, 'MietXpress · Buchungen'));
-    if (sel.length) sel.forEach((b) => main.append(card(b)));
+    if (sel.length) sel.forEach((b) => {
+      const runs = b.start !== state.sel && (b.ende || b.start) !== state.sel; // läuft nur durch, weder Abholung noch Rückgabe an diesem Tag
+      if (runs && !state.open['c' + b.id]) {
+        main.append(h('button', { class: 'runrow', style: '--pc:' + bookCatColor(b), onclick: () => { state.open['c' + b.id] = true; render(); } },
+          h('b', {}, abbrArt(b.artikel) || b.name),
+          h('span', {}, (b.name || '') + ' · läuft bis ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start)),
+          h('i', {}, '▾')));
+      } else main.append(card(b));
+    });
     else main.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
 
     const dayEv = (ems[state.sel] || []).slice().sort(byKind);
@@ -975,7 +983,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 26')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 27')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====

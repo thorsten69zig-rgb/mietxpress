@@ -396,3 +396,7 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .card .acts .arow{gap:5px}
 .card .acts button{font-size:12px;padding:5px 10px;min-height:0}
 .card .det{font-size:12.5px}
+.runrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid var(--line);border-left:5px solid var(--pc);background:var(--chip);color:var(--muted);border-radius:12px;padding:8px 12px;margin-bottom:8px;font-size:13px;opacity:.85}
+.runrow b{color:var(--text);font-size:13.5px;white-space:nowrap}
+.runrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runrow i{font-style:normal}
