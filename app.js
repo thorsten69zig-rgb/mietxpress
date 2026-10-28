@@ -538,10 +538,19 @@
   const KIND_ORDER = { mx: 0, bday: 1, priv: 2, info: 3 };
   const KIND_LABEL = { mx: 'MietXpress-Kalender', bday: 'Geburtstage 🎂', priv: 'Privat', info: 'Feiertage & Wochen' };
   const byKind = (a, b) => (KIND_ORDER[evKind(a)] - KIND_ORDER[evKind(b)]) || (a.zeit || '').localeCompare(b.zeit || '');
+  // Kurzform für Termine in den Kacheln: Klammern und Zusätze weg, nach ca. 22 Zeichen am Wortende kürzen
+  function shortEv(t) {
+    let s = String(t || '').replace(/^🎂\s*/, '').replace(/\s*\([^)]*\)/g, '').split(/\s+[–\/-]\s+|:\s/)[0].trim();
+    if (s.length > 22) {
+      const cut = s.slice(0, 23), sp = cut.lastIndexOf(' ');
+      s = (sp >= 6 ? cut.slice(0, sp) : s.slice(0, 22)).replace(/[,;]$/, '') + '…';
+    }
+    return s || String(t || '');
+  }
   function evChip(ev) {
     const k = evKind(ev), col = KCOL[k];
     const style = 'border-left:4px solid ' + col + ';background:' + col + '66';
-    return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + ev.title.replace(/^🎂\s*/, '')));
+    return h('span', { class: 'pc ev ev-' + k, style }, h('span', { class: 'pn' }, (k === 'bday' ? '🎂 ' : '') + shortEv(ev.title)));
   }
 
   // Monat auf einen Bildschirm einpassen: Kachelhöhe fest, Detailgrad je Tag so hoch wie möglich, Rest als „+n"
@@ -966,7 +975,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 25')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 26')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
