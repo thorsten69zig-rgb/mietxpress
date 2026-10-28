@@ -389,3 +389,10 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .wc.insel.busy{background-image:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18))}
 .wh.sel{box-shadow:inset 0 0 0 2px #2f7de1}
 .notetgl{border:0;background:var(--chip);color:var(--text);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;margin:2px 0 6px}
+.since{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.moretgl{border:0;background:var(--chip);color:var(--muted);border-radius:99px;padding:5px 11px;font-size:12px;font-weight:700;white-space:nowrap}
+.card .det .note{font-size:12.5px;line-height:1.35;color:var(--muted)}
+.card .acts{gap:5px}
+.card .acts .arow{gap:5px}
+.card .acts button{font-size:12px;padding:5px 10px;min-height:0}
+.card .det{font-size:12.5px}

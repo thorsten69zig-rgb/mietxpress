@@ -507,13 +507,13 @@
         h('div', { class: 'rrow' }, rechBtn(b),
           b.status !== 'storniert' ? h('span', { class: 'calst ' + (calOk ? 'ok' : (b.kalender === 'abweichend' ? 'warn' : 'no')) },
             calOk ? '✓ im Kalender' : (b.kalender === 'abweichend' ? '⚠ Kalender abweichend' : '✕ noch nicht im Kalender')) : null),
-        h('div', { class: 'since' }, b.erstellt ? 'Eingetragen am ' + fmtDE(b.erstellt) : 'Eintragsdatum unbekannt'),
-        h('div', { class: 'det' },
+        h('div', { class: 'since' }, h('span', {}, b.erstellt ? 'Eingetragen am ' + fmtDE(b.erstellt) : 'Eintragsdatum unbekannt'),
+          h('button', { class: 'moretgl', onclick: () => { state.open['m' + b.id] = !state.open['m' + b.id]; render(); } }, state.open['m' + b.id] ? 'Weniger ▴' : 'Status · Notiz ▾')),
+        state.open['m' + b.id] ? h('div', { class: 'det' },
           sp ? h('div', {}, '🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : '')) : null,
           b.telefon ? h('div', {}, h('span', {}, 'Telefon: '), h('a', { href: 'tel:' + b.telefon.replace(/\s+/g, '') }, b.telefon)) : null,
-          b.notiz ? h('button', { class: 'notetgl', onclick: () => { state.open['n' + b.id] = !state.open['n' + b.id]; render(); } }, (state.open['n' + b.id] ? '▾ Notiz ausblenden' : '▸ Notiz anzeigen')) : null,
-          b.notiz && state.open['n' + b.id] ? h('div', { class: 'note' }, b.notiz) : null,
-          actions(b))));
+          b.notiz ? h('div', { class: 'note' }, b.notiz) : null,
+          actions(b)) : null));
   }
 
   const sortByStart = (a, b) => (a.start + (a.zeit || '')).localeCompare(b.start + (b.zeit || ''));
@@ -966,7 +966,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 24')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 25')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
