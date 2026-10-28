@@ -653,12 +653,18 @@
     main.append(h('div', { class: 'grp grp-mx' }, 'MietXpress · Buchungen'));
     if (sel.length) sel.forEach((b) => {
       const runs = b.start !== state.sel && (b.ende || b.start) !== state.sel; // läuft nur durch, weder Abholung noch Rückgabe an diesem Tag
+      const total = Math.round((parse(b.ende || b.start) - parse(b.start)) / 864e5) + 1, nth = Math.round((parse(state.sel) - parse(b.start)) / 864e5) + 1;
+      const toggle = () => { state.open['c' + b.id] = !state.open['c' + b.id]; render(); };
       if (runs && !state.open['c' + b.id]) {
-        main.append(h('button', { class: 'runrow', style: '--pc:' + bookCatColor(b), onclick: () => { state.open['c' + b.id] = true; render(); } },
+        main.append(h('button', { class: 'runrow', style: '--pc:' + bookCatColor(b), onclick: toggle },
+          h('em', {}, 'LÄUFT'),
           h('b', {}, abbrArt(b.artikel) || b.name),
-          h('span', {}, (b.name || '') + ' · läuft bis ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start)),
-          h('i', {}, '▾')));
-      } else main.append(card(b));
+          h('span', {}, (b.name || '') + ' · Tag ' + nth + '/' + total + ' · bis ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start)),
+          h('i', {}, '▾ aufklappen')));
+      } else {
+        if (runs) main.append(h('button', { class: 'runclose', onclick: toggle }, '▴ Einklappen · ' + (abbrArt(b.artikel) || b.name) + ' läuft nur durch'));
+        main.append(card(b));
+      }
     });
     else main.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
 
@@ -983,7 +989,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 27')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 28')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
