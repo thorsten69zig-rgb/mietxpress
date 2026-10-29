@@ -298,7 +298,7 @@
       let inboxMsg = '';
       try {
         const ib = await processInbox();
-        if (ib.dateien) inboxMsg = ' Eingang: ' + ib.neu + ' neu, ' + ib.geaendert + ' geändert' + (ib.weg ? ', ' + ib.weg + ' gelöscht' : '') + '.' + (ib.warn.length ? ' Hinweise: ' + ib.warn.join('; ') : '');
+        if (ib.dateien) inboxMsg = ' Eingang: ' + ib.neu + ' neu, ' + ib.geaendert + ' geändert' + (ib.weg ? ', ' + ib.weg + ' gelöscht' : '') + (ib.bestand ? ', Bestand ' + ib.bestand + ' geändert' : '') + '.' + (ib.warn.length ? ' Hinweise: ' + ib.warn.join('; ') : '');
       } catch (e) { inboxMsg = ' Eingang nicht gelesen (' + (e.message || 'Fehler') + ').'; }
       const remote = await GDRIVE.find();
       let rdata = null;
@@ -464,6 +464,16 @@
     if (de === -1) return { t: 'gestern', c: 'past' };
     return { t: 'vor ' + (-de) + ' Tagen', c: 'past' };
   }
+  // Pakete aus der Notiz lesen: Wochenendpaket (Fr–So, Sa–So …) und Zusatzpakete ("+ Nebel Paket 1 (1 Liter …) 10 €")
+  function pkgInfo(b) {
+    const t = String(b.notiz || ''), out = [];
+    const w = t.match(/Wochenendpaket\s*(Fr\s*[–-]\s*So|Fr\s*[–-]\s*Sa|Sa\s*[–-]\s*So)?/i);
+    if (w) out.push({ k: 'wk', t: 'Wochenendpaket' + (w[1] ? ' ' + w[1].replace(/\s*-\s*/, '–').replace(/\s+/g, '') : '') });
+    const re = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
+    let m;
+    while ((m = re.exec(t))) out.push({ k: 'ex', t: '+ ' + m[1].trim() + ' · ' + m[3].replace('.', ',') + ' €', d: m[2] || '' });
+    return out;
+  }
   function isKombi(b) {
     const p = Avail.positionsOf(b, state.arts);
     if (p.length !== 2) return false;
@@ -492,6 +502,7 @@
           h('span', { class: 'tr' }, isKombi(b) ? h('span', { class: 'kombi' }, 'KOMBI') : null, h('span', { class: 'chip st-' + b.status }, STATUS[b.status] || b.status))),
         h('div', { class: 'name' }, b.artikel || '(ohne Artikel)'),
         h('div', { class: 'art' }, (b.name || '(ohne Name)') + (sp ? ' 🚫' : '')),
+        pkgInfo(b).length ? h('div', { class: 'pkgrow' }, pkgInfo(b).map((p) => h('span', { class: 'pkg ' + p.k, title: p.d }, (p.k === 'wk' ? '📦 ' : '') + p.t + (p.d ? ' (' + p.d + ')' : '')))) : null,
         h('div', { class: 'tl' }, h('b', {}, 'Abholung'), ' ' + wd(b.start) + ' ' + fmtD(b.start) + ' · ' + hhmm(b.abholzeit || b.zeit)),
         h('div', { class: 'tl' }, h('b', {}, 'Rückgabe'), ' ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start) + ' · ' + hhmm(b.rueckzeit), h('span', { class: 'dayc' }, days + (days === 1 ? ' Tag' : ' Tage'))),
         h('div', { class: 'money' }, money('Gesamtpreis', eur0(b.preis)), money('Anzahlung', eur0(b.anzahlung)), money(kLabel, b.kaution > 0 ? eur0(b.kaution) : '—')),
@@ -989,7 +1000,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 28')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 30')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1811,12 +1822,13 @@
     const done = (await DB.getMeta('eingangDone')) || [];
     const files = await GDRIVE.listInbox();
     const fresh = files.filter((f) => done.indexOf(f.id) < 0).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    let neu = 0, geaendert = 0, weg = 0; const warn = [];
+    let neu = 0, geaendert = 0, weg = 0, bestand = 0; const warn = [];
     for (const f of fresh) {
       let j;
       try { j = await GDRIVE.download(f.id); } catch (e) { warn.push(f.name + ': nicht lesbar'); continue; }
       const list = Array.isArray(j) ? j : (j && Array.isArray(j.buchungen) ? j.buchungen : []);
       const del = j && Array.isArray(j.loeschen) ? j.loeschen.map(String) : [];
+      const artUp = j && Array.isArray(j.artikel) ? j.artikel.filter((x) => x && x.name && x.menge != null) : []; // Bestandsänderungen: { name, menge }
       try {
         for (const it of prepItems(list)) {
           const d = Object.assign({}, it.b, { positionen: (it.b.positionen || Avail.positionsOf(it.b, state.arts)).map((p) => ({ artikel: p.artikel, anzahl: p.anzahl })) });
@@ -1825,11 +1837,16 @@
           if (it.isNew) neu++; else geaendert++;
         }
         for (const id of del) { const b = state.bookings.find((x) => x.id === id); if (b) { await removeBooking(b); weg++; } }
+        if (artUp.length) {
+          const list = state.arts.map((x) => Object.assign({}, x));
+          artUp.forEach((u) => { const t = list.find((x) => x.name === u.name); if (t) { t.menge = Number(u.menge); bestand++; } else warn.push('Bestand: Artikel "' + u.name + '" nicht gefunden'); });
+          if (bestand) await saveArts(list);
+        }
       } catch (e) { warn.push(f.name + ': ' + e.message); continue; }
       done.push(f.id);
     }
     await DB.setMeta('eingangDone', done.slice(-200));
-    return { neu, geaendert, weg, warn, dateien: fresh.length };
+    return { neu, geaendert, weg, bestand, warn, dateien: fresh.length };
   }
 
   function syncBanner() {

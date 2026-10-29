@@ -405,3 +405,7 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .runrow span{flex-basis:100%;order:5;color:var(--muted);font-size:12.5px;white-space:normal}
 .runrow i{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted)}
 .runclose{display:block;width:100%;border:0;background:var(--navy);color:#fff;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;margin:0 0 6px;text-align:left}
+.pkgrow{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+.pkg{font-size:13px;font-weight:800;border-radius:10px;padding:5px 10px}
+.pkg.wk{background:#7c3aed;color:#fff}
+.pkg.ex{background:rgba(124,58,237,.18);color:var(--text);border:1px solid #7c3aed}
