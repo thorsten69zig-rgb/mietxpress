@@ -1,7 +1,7 @@
 /* MietXpress Offline-App – Service Worker
    Strategie: App-Dateien aus dem Cache liefern (funktioniert ohne Netz) und im
    Hintergrund aktualisieren. Bei jeder neuen Version VERSION hochzählen. */
-const VERSION = 'mx-v31';
+const VERSION = 'mx-v32';
 const ASSETS = [
   './',
   'index.html',

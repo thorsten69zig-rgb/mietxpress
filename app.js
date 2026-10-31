@@ -1000,7 +1000,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 31')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 32')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1377,16 +1377,17 @@
     });
     // Zusätzliche Leistungen / Pakete (Tabelle Seite 2, Zeilen ab 160 pt, Höhe 23,6 pt)
     const exRe = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
-    let xm, xi = 0; const ntxt = String(b.notiz || '');
+    let xm, xi = 0, exSum = 0; const ntxt = String(b.notiz || '');
     while ((xm = exRe.exec(ntxt)) && xi < 3) {
-      const price = deMoney(Number(xm[3].replace(',', '.')));
+      const exVal = Number(xm[3].replace(',', '.')); exSum += exVal;
+      const price = deMoney(exVal);
       const top = 160 + xi * 23.6 + 15.5;
       T(p2, 50, top, xm[1].trim() + (xm[2] ? ' (' + xm[2].trim() + ')' : ''), 9);
       T(p2, 392, top, '1', 9);
       T(p2, 522 - font.widthOfTextAtSize(price, 9), top, price, 9);
       xi++;
     }
-    T(p2, 47, 116.5, deMoney(b.preis));
+    T(p2, 47, 116.5, deMoney(Math.max(0, (Number(b.preis) || 0) - exSum))); // Mietgebühr ohne die separat aufgeführten Zusatzpakete
     T(p2, 171, 116.5, deMoney(b.kaution));
     T(p2, 286, 116.5, deMoney(0));
     T(p2, 406, 116.5, deMoney(b.anzahlung));
