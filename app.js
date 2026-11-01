@@ -483,20 +483,28 @@
   const cap = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
   const hhmm = (t) => t ? t + ' Uhr' : 'Zeit offen';
 
-  // Zurückgebrachte Buchungen: eingeklappt, Status (Rechnung, Kaution) in der Zeile
-  function doneRow(b) {
+  // Bezugstag: im Monat der gewählte Tag, sonst heute
+  const refDay = () => (state.view === 'monat' && state.sel) ? state.sel : iso(today0());
+  // zugeklappt: zurückgebracht oder schon abgeholt und Rückgabe erst nach dem Bezugstag (an dem Tag nichts zu tun)
+  const foldMode = (b) => b.status === 'zurueck' ? 'done' : (b.status === 'abgeholt' && (b.ende || b.start) > refDay() ? 'run' : null);
+  const quickSt = (b, st) => async (ev) => { ev.stopPropagation(); await patchBooking(b, { status: st, statusVorher: b.status }); toast(st === 'abgeholt' ? 'Als abgeholt markiert' : 'Als zurückgebracht markiert'); };
+  function doneRow(b, mode) {
     const kaut = b.kaution > 0 ? (b.kautionStatus === 'zurueck' ? 'Kaution zurück ✓' : (b.kautionStatus === 'erhalten' ? 'Kaution noch bei dir ⚠' : 'Kaution offen ⚠')) : null;
     const rech = b.rechnung === 'erstellt' ? 'Rechnung ' + (b.rechnungNr || '✓') : (b.rechnung === 'angefordert' ? 'Rechnung angefordert' : 'keine Rechnung');
-    const rest = Math.max(0, (Number(b.preis) || 0) - (Number(b.anzahlung) || 0));
-    return h('button', { class: 'donerow', style: '--pc:' + bookCatColor(b), onclick: () => { state.open['z' + b.id] = true; render(); } },
-      h('em', {}, 'ZURÜCK ✓'),
+    const run = mode === 'run';
+    return h('div', { class: 'donerow' + (run ? ' run' : ''), role: 'button', style: '--pc:' + bookCatColor(b), onclick: () => { state.open['z' + b.id] = true; render(); } },
+      h('em', {}, run ? 'ABGEHOLT' : 'ZURÜCK ✓'),
       h('b', {}, abbrArt(b.artikel) || b.artikel || b.name),
       h('i', {}, '▾ aufklappen'),
-      h('span', {}, (b.name || '') + ' · ' + fmtD(b.start) + (b.ende && b.ende !== b.start ? '–' + fmtD(b.ende) : '')),
+      h('span', {}, (b.name || '') + (run ? ' · Rückgabe ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start) + (b.rueckzeit ? ' · ' + b.rueckzeit + ' Uhr' : '') : ' · ' + fmtD(b.start) + (b.ende && b.ende !== b.start ? '–' + fmtD(b.ende) : ''))),
       h('span', { class: 'dst' }, [rech, kaut].filter(Boolean).join(' · ')));
   }
   function card(b) {
-    if (b.status === 'zurueck' && !state.open['z' + b.id]) return doneRow(b);
+    const fm = foldMode(b);
+    if (fm && !state.open['z' + b.id]) return doneRow(b, fm);
+    const ref = refDay(), endD = b.ende || b.start;
+    const todo = b.status === 'abgeholt' ? endD <= ref : ((b.status === 'bestaetigt' || b.status === 'angefragt') && b.start <= ref && endD >= ref);
+    const stLabel = b.status === 'abgeholt' ? (endD < ref ? 'Rückgabe überfällig' : (endD === ref ? 'Heute zurückbringen' : 'Abgeholt · Rückgabe offen')) : (STATUS[b.status] || b.status);
     const stop = (e) => e.stopPropagation();
     const rest = Math.max(0, b.preis - b.anzahlung);
     const kautOpen = b.kaution > 0 && b.kautionStatus !== 'erhalten' && b.kautionStatus !== 'zurueck' ? b.kaution : 0;
@@ -508,11 +516,11 @@
     const calOk = b.gcalEventId || b.kalender === 'ja';
     const payParts = [rest > 0 ? 'Rest ' + eur0(rest) : null, kautOpen > 0 ? 'Kaution ' + eur0(kautOpen) : null].filter(Boolean).join(' + ');
     const payOpen = (b.status === 'angefragt' || b.status === 'bestaetigt');
-    return h('div', { class: 'card' + (b.status === 'storniert' ? ' cancel' : ''), style: '--pc:' + bookCatColor(b) },
+    return h('div', { class: 'card' + (b.status === 'storniert' ? ' cancel' : '') + (todo ? ' todo' : ''), style: '--pc:' + bookCatColor(b) },
       h('div', { class: 'stripe' }),
       h('div', { class: 'body' },
         h('div', { class: 'top' }, h('span', { class: 'when ' + due.c }, due.t),
-          h('span', { class: 'tr' }, isKombi(b) ? h('span', { class: 'kombi' }, 'KOMBI') : null, h('span', { class: 'chip st-' + b.status }, b.status === 'abgeholt' ? 'Abgeholt · Rückgabe offen' : (STATUS[b.status] || b.status)))),
+          h('span', { class: 'tr' }, isKombi(b) ? h('span', { class: 'kombi' }, 'KOMBI') : null, h('span', { class: 'chip st-' + b.status }, stLabel))),
         h('div', { class: 'name' }, b.artikel || '(ohne Artikel)'),
         h('div', { class: 'art' }, (b.name || '(ohne Name)') + (sp ? ' 🚫' : '')),
         pkgInfo(b).length ? h('div', { class: 'pkgrow' }, pkgInfo(b).map((p) => h('span', { class: 'pkg ' + p.k, title: p.d }, (p.k === 'wk' ? '📦 ' : '') + p.t + (p.d ? ' (' + p.d + ')' : '')))) : null,
@@ -524,6 +532,8 @@
         (b.plattform || b.adresse) ? h('div', { class: 'srcrow' },
           b.plattform ? h('span', { class: 'plat' }, cap(b.plattform)) : null,
           b.adresse ? h('a', { href: 'https://maps.apple.com/?q=' + encodeURIComponent(b.adresse) }, b.adresse) : null) : null,
+        (b.status === 'bestaetigt' || b.status === 'angefragt') && b.start <= ref ? h('button', { class: 'quick qa', onclick: quickSt(b, 'abgeholt') }, '✓ Abgeholt') : null,
+        b.status === 'abgeholt' ? h('button', { class: 'quick qr', onclick: quickSt(b, 'zurueck') }, '✓ Zurückgebracht') : null,
         h('div', { class: 'cbrow' },
           h('button', { class: 'cb abh', onclick: () => openPickup(b) }, 'Abholung'),
           h('button', { class: 'cb mv', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag'),
@@ -538,7 +548,7 @@
           b.telefon ? h('div', {}, h('span', {}, 'Telefon: '), h('a', { href: 'tel:' + b.telefon.replace(/\s+/g, '') }, b.telefon)) : null,
           b.notiz ? h('div', { class: 'note' }, b.notiz) : null,
           actions(b)) : null,
-        b.status === 'zurueck' ? h('button', { class: 'runclose', style: 'margin-top:8px', onclick: () => { state.open['z' + b.id] = false; render(); } }, '▴ Einklappen · zurückgebracht') : null));
+        fm ? h('button', { class: 'runclose', style: 'margin-top:8px', onclick: () => { state.open['z' + b.id] = false; render(); } }, '▴ Einklappen') : null));
   }
 
   const sortByStart = (a, b) => (a.start + (a.zeit || '')).localeCompare(b.start + (b.zeit || ''));
@@ -1014,7 +1024,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 33')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 34')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====

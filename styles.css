@@ -417,3 +417,12 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .donerow i{margin-left:auto;font-style:normal;font-size:12px;font-weight:700;color:var(--muted)}
 .donerow span{flex-basis:100%;color:var(--muted);font-size:12.5px}
 .donerow .dst{color:var(--text);font-weight:600}
+
+/* v34: heute zu erledigen, Schnell-Buttons */
+.donerow{cursor:pointer}
+.donerow.run{border-left-color:var(--accent)}
+.donerow.run em{background:var(--accent)}
+.card.todo{box-shadow:0 0 0 2px var(--accent)}
+.quick{display:block;width:100%;border:0;border-radius:12px;padding:13px 14px;margin:8px 0 2px;font-size:16px;font-weight:800;color:#fff}
+.quick.qa{background:var(--accent)}
+.quick.qr{background:var(--green)}
