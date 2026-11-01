@@ -489,15 +489,14 @@
   const foldMode = (b) => b.status === 'zurueck' ? 'done' : (b.status === 'abgeholt' && (b.ende || b.start) > refDay() ? 'run' : null);
   const quickSt = (b, st) => async (ev) => { ev.stopPropagation(); await patchBooking(b, { status: st, statusVorher: b.status }); toast(st === 'abgeholt' ? 'Als abgeholt markiert' : 'Als zurückgebracht markiert'); };
   function doneRow(b, mode) {
-    const kaut = b.kaution > 0 ? (b.kautionStatus === 'zurueck' ? 'Kaution zurück ✓' : (b.kautionStatus === 'erhalten' ? 'Kaution noch bei dir ⚠' : 'Kaution offen ⚠')) : null;
-    const rech = b.rechnung === 'erstellt' ? 'Rechnung ' + (b.rechnungNr || '✓') : (b.rechnung === 'angefordert' ? 'Rechnung angefordert' : 'keine Rechnung');
     const run = mode === 'run';
+    const warn = b.status === 'zurueck' && ((b.kaution > 0 && b.kautionStatus !== 'zurueck') || b.rechnung !== 'erstellt');
     return h('div', { class: 'donerow' + (run ? ' run' : ''), role: 'button', style: '--pc:' + bookCatColor(b), onclick: () => { state.open['z' + b.id] = true; render(); } },
-      h('em', {}, run ? 'ABGEHOLT' : 'ZURÜCK ✓'),
+      h('em', {}, run ? 'DRAUSSEN' : 'ZURÜCK ✓'),
       h('b', {}, abbrArt(b.artikel) || b.artikel || b.name),
-      h('i', {}, '▾ aufklappen'),
-      h('span', {}, (b.name || '') + (run ? ' · Rückgabe ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start) + (b.rueckzeit ? ' · ' + b.rueckzeit + ' Uhr' : '') : ' · ' + fmtD(b.start) + (b.ende && b.ende !== b.start ? '–' + fmtD(b.ende) : ''))),
-      h('span', { class: 'dst' }, [rech, kaut].filter(Boolean).join(' · ')));
+      state.view === 'liste' ? h('small', {}, b.name || '') : null,
+      run ? h('small', {}, 'bis ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start)) : (warn ? h('small', { class: 'wn' }, '⚠ offen') : null),
+      h('i', {}, '▾'));
   }
   function card(b) {
     const fm = foldMode(b);
@@ -683,7 +682,8 @@
     main.append(grid);
     fitGrid(grid, rows);
 
-    const sel = (map[state.sel] || []).slice().sort(sortByStart);
+    const rank = (x) => x.status === 'angefragt' ? 0 : (foldMode(x) && !state.open['z' + x.id] ? 1 : 2);
+    const sel = (map[state.sel] || []).slice().sort((x, y) => (rank(x) - rank(y)) || sortByStart(x, y));
     main.append(h('h3', {}, fmtFull(state.sel)));
     main.append(h('div', { class: 'grp grp-mx' }, 'MietXpress · Buchungen'));
     if (sel.length) sel.forEach((b) => {
@@ -1024,7 +1024,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 34')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 35')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1896,6 +1896,17 @@
         d.busy ? '…' : (state.online ? 'Abgleichen' : 'Offline')));
   }
 
+  // Immer sichtbar: was gerade draußen ist und welche Anfragen offen sind (nur Produkt)
+  function liveStrip() {
+    const out = state.bookings.filter((b) => b.status === 'abgeholt').sort((x, y) => (x.ende || x.start).localeCompare(y.ende || y.start));
+    const req = state.bookings.filter((b) => b.status === 'angefragt').sort(sortByStart);
+    if (!out.length && !req.length) return null;
+    const go = (b, day) => () => { state.view = 'monat'; state.sel = day; state.cursor = new Date(parse(day).getFullYear(), parse(day).getMonth(), 1); render(); window.scrollTo(0, 0); };
+    const chip = (b, cls, day) => h('button', { class: 'lchip ' + cls, style: '--pc:' + bookCatColor(b), onclick: go(b, day) }, abbrArt(b.artikel) || b.artikel || b.name);
+    return h('div', { class: 'live' },
+      req.length ? h('div', { class: 'lrow req' }, h('span', {}, 'ANFRAGEN'), req.map((b) => chip(b, 'rq', b.start))) : null,
+      out.length ? h('div', { class: 'lrow' }, h('span', {}, 'DRAUSSEN'), out.map((b) => chip(b, 'ot', b.ende || b.start))) : null);
+  }
   // ===== Rendern =====
   function render() {
     const app = document.getElementById('app');
@@ -1909,7 +1920,7 @@
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
-    if (state.ready && state.view !== 'preise' && state.bookings.length) wrap.append(statsBox());
+    if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
     wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Preise']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
