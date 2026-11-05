@@ -438,3 +438,11 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .lrow.req>span{color:var(--accent)}
 .lchip{border:0;border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;color:#fff;background:var(--pc)}
 .lchip.rq{outline:2px solid var(--accent);outline-offset:1px}
+/* v36: Dark Mode – Eingabefelder lesbar */
+.inp,input,select,textarea{color:var(--text);font-family:inherit}
+.inp::placeholder,input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
+@media (prefers-color-scheme:dark){
+  :root{color-scheme:dark}
+  .inp,input,select,textarea{background:#1f2a46;color:var(--text);border-color:#34426a}
+  input[type=date]{min-height:42px}
+}
