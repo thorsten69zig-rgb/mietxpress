@@ -1024,7 +1024,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 36')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 37')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1708,10 +1708,11 @@
   const DISP = { 'Crepes Maschine Paris': 'Crêpes Maschine Paris', 'Schneemaschine/Schaumkanone Snow': 'Schneemaschine', 'Party-Kühlschrank/Akku-Kühlbox': 'Party-Kühlschrank', 'Glühweinkocher/Wasserkocher': 'Glühweinkocher', 'Speisewärmer Eat': 'Speisewärmer' };
   function msgTexts(o) {
     const sig = 'Thorsten Müller';
+    const fest = (o.art && GEN[o.art] ? GEN[o.art] + ' ' + (DISP[o.art] || o.art) + ' fest für dich reserviert' : 'dein Termin fest reserviert');
     const dat = o.d ? pad(o.d.getDate()) + '.' + pad(o.d.getMonth() + 1) : '[DATUM]';
     return {
       avail: 'Hallo,\nja, ' + (o.art && GEN[o.art] ? GEN[o.art] + ' ' + (DISP[o.art] || o.art) + ' wäre' : 'das wäre') + ' da noch verfügbar.\n\nMit freundlichen Grüßen\n' + sig,
-      res: 'Hallo lieber Kunde,\nfür deine Reservierung überweise bitte 10 € per PayPal an info@muellers-mietxpress.de\nName und Mietdatum einfach im Betreff angeben.\nDanke! 😊\n\nMit freundlichen Grüßen\n' + sig,
+      res: 'Hallo lieber Kunde,\nfür die Reservierung sende bitte 10 € per PayPal an info@muellers-mietxpress.de\nName und Mietdatum einfach im Betreff angeben.\n\nSobald die Anzahlung bei mir eingegangen ist, ist ' + fest + ' und ich schicke dir alle weiteren Infos zur Abholung.\n\nMit freundlichen Grüßen\n' + sig,
       best: 'Hallo lieber Kunde,\nvielen Dank für deine Buchung! ' +
         (o.hasData ? '' : 'Für den Mietvertrag benötige ich noch deinen vollständigen Namen und deine Adresse. ') +
         'Hier nochmal alle Infos auf einen Blick:\n' +
@@ -1719,7 +1720,7 @@
         '🕐 Abholzeit: ' + (o.ab ? timeDe(o.ab) : '[UHRZEIT]') + '\n' +
         '📅 Datum: ' + dat + '\n' +
         '🪪 Bitte mitbringen: Lichtbildausweis + Kaution (bar)\n\nBis dann! 😊\n' + sig,
-      bank: 'Hallo lieber Kunde,\nkein Problem, du kannst die 10 € für deine Reservierung auch per Überweisung senden:\nIBAN: ' + IBAN_TXT + '\nName und Mietdatum einfach im Verwendungszweck angeben.\nDanke! 😊\n\nMit freundlichen Grüßen\n' + sig
+      bank: 'Hallo lieber Kunde,\nkein Problem, du kannst die 10 € für die Reservierung auch per Überweisung senden:\nIBAN: ' + IBAN_TXT + '\nName und Mietdatum einfach im Verwendungszweck angeben.\n\nSobald die Anzahlung bei mir eingegangen ist, ist ' + fest + ' und ich schicke dir alle weiteren Infos zur Abholung.\n\nMit freundlichen Grüßen\n' + sig
     };
   }
   function buildMsgs(b) {
