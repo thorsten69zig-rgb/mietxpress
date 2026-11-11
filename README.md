@@ -18,3 +18,4 @@ Achtung: sw.js nie leer hochladen.
 
 ## Stand dieses Backups: App-Version 19
 
+
