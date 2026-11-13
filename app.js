@@ -1024,7 +1024,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 37')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 38')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1586,50 +1586,50 @@
   async function resetLogo() { state.logo = null; await DB.setMeta('logo', null); render(); toast('Logo zurückgesetzt'); }
 
   // ===== Preisliste 2026 (Stand 10/2026) =====
-  const TIERS = [['Mo–Do', '1 Tag Mo–Do'], ['Fr–So / Feiertag', '1 Tag Fr–So / Feiertag'], ['Fr–Sa / Sa–So', 'Wochenendpaket Fr–Sa / Sa–So'], ['Fr–So ganzes WE', 'Wochenendpaket Fr–So']];
+  const TIERS = [['Tagespreis', '1 Tag (Mo–So)'], ['Fr–Sa / Sa–So', 'Wochenendpaket Fr–Sa / Sa–So'], ['Fr–So ganzes WE', 'Wochenendpaket Fr–So']];
   const PRICES = [
     { cat: 'Kombi-Angebote', short: 'Kombi', items: [
-      { n: 'Hüpfburg + JBL PartyBox 520', inv: null, p: [60, 80, 130, 160], k: 200,
+      { n: 'Hüpfburg + JBL PartyBox 520', inv: null, p: [80, 130, 160], k: 200,
         note: 'Hüpfburg frei wählbar: Schloss, Kleines Schloss, Slide oder Space. Bei Buchung: gewählte Hüpfburg + PartyBox JBL 520 als zwei Positionen eintragen, damit beides blockiert wird.' }
     ] },
     { cat: 'Hüpfburgen', short: 'Hüpfburgen', items: [
-      { n: 'Hüpfburg Schloss', inv: 'Hüpfburg Schloss', p: [40, 50, 80, 100], k: 100 },
-      { n: 'Hüpfburg Slide', inv: 'Hüpfburg Slide', p: [40, 50, 80, 100], k: 100 },
-      { n: 'Hüpfburg Space', inv: 'Hüpfburg Space', p: [40, 50, 80, 100], k: 100 },
-      { n: 'Hüpfburg Kleines Schloss', inv: 'Hüpfburg Kleines Schloss', p: [40, 50, 80, 100], k: 100 }
+      { n: 'Hüpfburg Schloss', inv: 'Hüpfburg Schloss', p: [50, 80, 100], k: 100 },
+      { n: 'Hüpfburg Slide', inv: 'Hüpfburg Slide', p: [50, 80, 100], k: 100 },
+      { n: 'Hüpfburg Space', inv: 'Hüpfburg Space', p: [50, 80, 100], k: 100 },
+      { n: 'Hüpfburg Kleines Schloss', inv: 'Hüpfburg Kleines Schloss', p: [50, 80, 100], k: 100 }
     ] },
     { cat: 'Partytechnik · Sound · Licht', short: 'Technik', items: [
-      { n: 'PartyBox JBL 520', inv: 'PartyBox JBL 520', p: [30, 40, 60, 80], k: 100, x: ['+ Licht Paket 1: 10 €', '+ Mikrofon Paket: 10 €'] },
-      { n: 'DJ & Party Paket', inv: 'DJ & Party Paket', p: [90, 110, 175, 220], k: 150, note: 'inkl. 2x Mikro, 2x JBL 520, 2x Ständer, Nebelmaschine, Partylicht' },
-      { n: 'LED Lichtanlage', inv: 'LED Lichtanlage', p: [30, 35, 60, 80], k: 50 }
+      { n: 'PartyBox JBL 520', inv: 'PartyBox JBL 520', p: [40, 60, 80], k: 100, x: ['+ Licht Paket 1: 10 €', '+ Mikrofon Paket: 10 €'] },
+      { n: 'DJ & Party Paket', inv: 'DJ & Party Paket', p: [110, 175, 220], k: 150, note: 'inkl. 2x Mikro, 2x JBL 520, 2x Ständer, Nebelmaschine, Partylicht' },
+      { n: 'LED Lichtanlage', inv: 'LED Lichtanlage', p: [35, 60, 80], k: 50 }
     ] },
     { cat: 'Catering-Maschinen', short: 'Catering', items: [
-      { n: 'Popcornmaschine Star', inv: 'Popcornmaschine Star', p: [40, 50, 80, 100], k: 50, x: ['+ Popcorn Paket 1: 25 €', '+ Reinigung: 30 €'] },
-      { n: 'Slush Eis Maschine Ninja', inv: 'Slush Eis Maschine Ninja', p: [35, 40, 70, 85], k: 50, x: ['+ Slush Paket 1: 15 €', '+ Reinigung: 15 €'] },
-      { n: 'Zuckerwattenmaschine Sweet', inv: 'Zuckerwattenmaschine Sweet', p: [30, 40, 60, 80], k: 50, x: ['+ Zucker Paket (Zucker & Stäbe): 7 €', '+ Reinigung: 15 €'] },
-      { n: 'Crêpes Maker Paris', inv: 'Crepes Maschine Paris', p: [20, 30, 50, 70], k: 50, x: ['+ Langzeitangebot 10 Tage: 150 €'] },
-      { n: 'Speisewärmer / Wärmebehälter', inv: 'Speisewärmer Eat', p: [8, 10, 13, 18], k: 15, x: ['+ 2x Wärmepaste: 5 €'] },
-      { n: 'Party-Kühlschrank / Akku-Kühlbox', inv: 'Party-Kühlschrank/Akku-Kühlbox', p: [30, 40, 60, 80], k: 100, x: ['Langzeit: 4–6 Tage = 22 €/Tag', '7–13 Tage = 18 €/Tag · ab 14 Tage = 15 €/Tag'] },
-      { n: 'Glühweinkocher / Wasserkocher', inv: 'Glühweinkocher/Wasserkocher', p: [10, 15, 20, 25], k: 20 },
-      { n: 'kukki Cocktail-Toaster', inv: 'kukki Cocktail-Toaster', p: [25, 25, 40, 50], k: 50, note: 'Tiefgefrorene Cocktails in 20–30 Sek. servierfertig. Cocktails selbst nicht im Mietpreis enthalten, Abgabe nur ab 18 Jahren.', x: ['Cocktails auf Anfrage dazu erhältlich'] },
-      { n: 'Aperol Spritz Maschine', inv: 'Aperol Spritz Maschine', p: [25, 25, 40, 50], k: 50, note: 'Sprizzer mit 3 Kammern (Prosecco/Aperol/Soda), mischt automatisch 3:2:1, reicht für ca. 18–20 Gläser pro Füllung. Getränke & Eis nicht im Mietpreis enthalten.', x: ['Vorlage Lichtbildausweis erforderlich'] }
+      { n: 'Popcornmaschine Star', inv: 'Popcornmaschine Star', p: [50, 80, 100], k: 50, x: ['+ Popcorn Paket 1: 25 €', '+ Reinigung: 30 €'] },
+      { n: 'Slush Eis Maschine Ninja', inv: 'Slush Eis Maschine Ninja', p: [40, 70, 85], k: 50, x: ['+ Slush Paket 1: 15 €', '+ Reinigung: 15 €'] },
+      { n: 'Zuckerwattenmaschine Sweet', inv: 'Zuckerwattenmaschine Sweet', p: [40, 60, 80], k: 50, x: ['+ Zucker Paket (Zucker & Stäbe): 7 €', '+ Reinigung: 15 €'] },
+      { n: 'Crêpes Maker Paris', inv: 'Crepes Maschine Paris', p: [30, 50, 70], k: 50, x: ['+ Langzeitangebot 10 Tage: 150 €'] },
+      { n: 'Speisewärmer / Wärmebehälter', inv: 'Speisewärmer Eat', p: [10, 13, 18], k: 15, x: ['+ 2x Wärmepaste: 5 €'] },
+      { n: 'Party-Kühlschrank / Akku-Kühlbox', inv: 'Party-Kühlschrank/Akku-Kühlbox', p: [40, 60, 80], k: 100, x: ['Langzeit: 4–6 Tage = 22 €/Tag', '7–13 Tage = 18 €/Tag · ab 14 Tage = 15 €/Tag'] },
+      { n: 'Glühweinkocher / Wasserkocher', inv: 'Glühweinkocher/Wasserkocher', p: [15, 20, 25], k: 20 },
+      { n: 'kukki Cocktail-Toaster', inv: 'kukki Cocktail-Toaster', p: [25, 40, 50], k: 50, note: 'Tiefgefrorene Cocktails in 20–30 Sek. servierfertig. Cocktails selbst nicht im Mietpreis enthalten, Abgabe nur ab 18 Jahren.', x: ['Cocktails auf Anfrage dazu erhältlich'] },
+      { n: 'Aperol Spritz Maschine', inv: 'Aperol Spritz Maschine', p: [25, 40, 50], k: 50, note: 'Sprizzer mit 3 Kammern (Prosecco/Aperol/Soda), mischt automatisch 3:2:1, reicht für ca. 18–20 Gläser pro Füllung. Getränke & Eis nicht im Mietpreis enthalten.', x: ['Vorlage Lichtbildausweis erforderlich'] }
     ] },
     { cat: 'Mobiliar & Stehtische', short: 'Mobiliar', items: [
-      { n: 'Stehtisch (pro Tisch)', inv: 'Stehtisch', p: [8, 10, 12, 15], k: 20, kp: 'pro Stück', x: ['+ Hussen Paket (inkl. Reinigung): 7 €'] },
-      { n: 'Bierzeltgarnitur (1 Tisch & 2 Bänke)', inv: 'Bierzeltgarnitur', p: [8, 10, 12, 15], k: 20, kp: 'pro Stück' }
+      { n: 'Stehtisch (pro Tisch)', inv: 'Stehtisch', p: [10, 12, 15], k: 20, kp: 'pro Stück', x: ['+ Hussen Paket (inkl. Reinigung): 7 €'] },
+      { n: 'Bierzeltgarnitur (1 Tisch & 2 Bänke)', inv: 'Bierzeltgarnitur', p: [10, 12, 15], k: 20, kp: 'pro Stück' }
     ] },
     { cat: 'Spezialmaschinen', short: 'Maschinen', items: [
-      { n: 'Schneemaschine Snow', inv: 'Schneemaschine/Schaumkanone Snow', p: [40, 50, 70, 90], k: 50, x: ['+ Schnee Paket 1: 22 €'] },
-      { n: 'Nebelmaschine Fog / Fog Beamz', inv: 'Nebelmaschine Fog Beamz', p: [15, 20, 30, 40], k: 50, x: ['+ Nebel Paket 1: 10 €'] }
+      { n: 'Schneemaschine Snow', inv: 'Schneemaschine/Schaumkanone Snow', p: [50, 70, 90], k: 50, x: ['+ Schnee Paket 1: 22 €'] },
+      { n: 'Nebelmaschine Fog / Fog Beamz', inv: 'Nebelmaschine Fog Beamz', p: [20, 30, 40], k: 50, x: ['+ Nebel Paket 1: 10 €'] }
     ] }
   ];
   const diffDays = (a, b) => Math.round((Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()) - Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
   function matchTier(vs, bs) {
     if (!vs) return -1; bs = bs || vs; if (bs < vs) bs = vs;
     const d0 = parse(vs), n = diffDays(parse(bs), d0) + 1, dow = (d0.getDay() + 6) % 7;
-    if (n === 1) return dow <= 3 ? 0 : 1;
-    if (n === 2 && (dow === 4 || dow === 5)) return 2;
-    if (n === 3 && dow === 4) return 3;
+    if (n === 1) return 0;
+    if (n === 2 && (dow === 4 || dow === 5)) return 1;
+    if (n === 3 && dow === 4) return 2;
     return -1;
   }
   function availOf(it, vs, bs) {
