@@ -1029,7 +1029,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 50')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 51')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -2064,6 +2064,45 @@
   }
 
   // Immer sichtbar: was gerade draußen ist und welche Anfragen offen sind (nur Produkt)
+  // ===== Suche über alles (Buchungen + Kalendertermine) =====
+  function viewSearch() {
+    const S = state.search, T = iso(today0());
+    const out = h('div', { class: 'srlist' });
+    const norm = (t) => String(t == null ? '' : t).toLowerCase();
+    const go = (day, b) => () => {
+      state.search = null; if (!state.schnell) state.view = 'monat';
+      state.sel = day; state.cursor = new Date(parse(day).getFullYear(), parse(day).getMonth(), 1);
+      if (b) { state.open['s' + b.id] = true; state.open['z' + b.id] = true; }
+      render(); window.scrollTo(0, 0);
+    };
+    const paint = () => {
+      const words = norm(S.q).split(/\s+/).filter(Boolean);
+      if (!words.length) { out.replaceChildren(h('div', { class: 'empty' }, 'Tippe einen Namen, Artikel, Ort, Telefonnummer oder Begriff ein.')); return; }
+      const hit = (txt) => { const t = norm(txt); return words.every((w) => t.indexOf(w) > -1); };
+      const items = [];
+      state.bookings.forEach((b) => {
+        if (hit([b.name, b.artikel, b.telefon, b.adresse, b.notiz, b.plattform, STATUS[b.status]].join(' ')))
+          items.push({ d: b.start, e: b.ende || b.start, t: (b.artikel || '(ohne Artikel)') + ' · ' + (b.name || '(ohne Name)'), s: 'Buchung · ' + (STATUS[b.status] || b.status) + (b.adresse ? ' · ' + b.adresse : ''), k: 'b', b, c: bookCatColor(b) });
+      });
+      const mirrored = (ev) => state.bookings.some((b) => b.gcalEventId && (b.gcalEventId === ev.id || String(ev.id).endsWith(':' + b.gcalEventId) || String(b.gcalEventId).endsWith(':' + ev.id)));
+      (state.cal.events || []).forEach((ev) => {
+        if (mirrored(ev)) return;
+        if (hit([ev.title, ev.ort].join(' '))) items.push({ d: ev.start, e: ev.ende || ev.start, t: ev.title, s: 'Kalender' + (ev.zeit ? ' · ' + ev.zeit : '') + (ev.ort ? ' · ' + ev.ort : ''), k: 'e', c: '#7a8aa8' });
+      });
+      const up = items.filter((x) => x.e >= T).sort((a, b) => a.d.localeCompare(b.d)), past = items.filter((x) => x.e < T).sort((a, b) => b.d.localeCompare(a.d));
+      const all = up.concat(past).slice(0, 80);
+      const row = (x) => h('button', { class: 'trow' + (x.e < T ? ' past' : ''), style: '--pc:' + x.c, onclick: go(x.d, x.b) },
+        h('b', {}, wd(x.d) + ' ' + fmtD(x.d) + (x.e !== x.d ? ' – ' + fmtD(x.e) : '') + '.' + parse(x.d).getFullYear()), h('span', {}, x.t), h('em', {}, x.s));
+      out.replaceChildren(...(all.length ? [h('div', { class: 'tnone' }, items.length + (items.length === 1 ? ' Treffer' : ' Treffer') + (items.length > 80 ? ' (die ersten 80)' : ''))].concat(all.map(row)) : [h('div', { class: 'empty' }, 'Nichts gefunden.')]));
+    };
+    const inp = h('input', { class: 'inp', type: 'search', placeholder: 'Alles durchsuchen …', value: S.q, autocomplete: 'off', oninput: (e) => { S.q = e.target.value; paint(); } });
+    setTimeout(() => { try { inp.focus(); } catch (e) {} paint(); }, 0);
+    return h('div', { class: 'ov', id: 'searchov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Suche'), h('button', { class: 'btn sec', onclick: () => { state.search = null; render(); } }, 'Schließen')),
+      inp,
+      h('div', { class: 'tnone' }, 'Durchsucht Buchungen und deine Google-Kalender (ab letztem Monat bis ca. 10 Monate voraus).'),
+      out));
+  }
   // ===== Heute: was geht raus, was kommt zurück, was ist offen =====
   function listDev(b) {
     if (!(Number(b.preis) > 0) || ['angefragt', 'bestaetigt', 'abgeholt'].indexOf(b.status) < 0) return null;
@@ -2118,6 +2157,7 @@
       h('div', { class: 'ttl' }, h('h1', {}, 'MietXpress'), h('div', { class: 'hdate' }, h('span', {}, today0().toLocaleDateString('de-DE', { weekday: 'long' }) + ' '), h('b', {}, today0().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })))),
       h('span', { class: 'net ' + (state.online ? 'on' : 'off') }, state.online ? 'Online' : 'Offline'),
       h('button', { class: 'iconbtn' + (state.schnell ? ' on' : ''), 'aria-label': state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad)', title: state.schnell ? 'Normale Ansicht' : 'Schnellansicht', onclick: () => setSchnell(!state.schnell) }, '🖥️'),
+      h('button', { class: 'iconbtn', 'aria-label': 'Suche', onclick: () => { state.search = { q: '' }; render(); } }, '🔍'),
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
@@ -2155,6 +2195,7 @@
     if (state.paste) app.append(viewPaste());
     if (state.pickup) app.append(viewPickup());
     if (state.info) app.append(viewInfo());
+    if (state.search) app.append(viewSearch());
     if (state.sperrOpen) app.append(viewSperr());
     if (state.bestandOpen) app.append(viewBestandEdit());
     if (state.gev) app.append(viewGev());
