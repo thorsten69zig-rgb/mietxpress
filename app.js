@@ -1027,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 47')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 48')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1116,7 +1116,7 @@
     const base = iso(today0());
     const d = b ? JSON.parse(JSON.stringify(b)) : {
       id: null, name: '', telefon: '', adresse: '', plattform: 'Sonstige',
-      start: state.sel || base, ende: state.sel || base, abholzeit: '', rueckzeit: '',
+      start: state.sel || base, ende: state.sel || base, abholzeit: '10:00', rueckzeit: '21:00',
       positionen: [], preis: 0, anzahlung: 0, kaution: 0, kautionStatus: 'keine',
       status: 'bestaetigt', notiz: '', erstellt: base
     };
