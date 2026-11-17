@@ -1024,7 +1024,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 39')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 40')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1710,13 +1710,17 @@
   function quickDates() {
     const t0 = today0(), dow = (t0.getDay() + 6) % 7, fr = addDays(t0, (4 - dow + 7) % 7);
     const set = (a, b) => { state.pvon = a; state.pbis = b; render(); };
+    const cur = (state.pvon || '') + '|' + (state.pbis || '');
     return h('div', { class: 'chips qd' }, [
-      ['Heute', () => set(iso(t0), '')],
-      ['Morgen', () => set(iso(addDays(t0, 1)), '')],
-      ['Fr–Sa', () => set(iso(fr), iso(addDays(fr, 1)))],
-      ['Sa–So', () => set(iso(addDays(fr, 1)), iso(addDays(fr, 2)))],
-      ['Fr–So', () => set(iso(fr), iso(addDays(fr, 2)))]
-    ].map((c) => h('button', { onclick: c[1] }, c[0])));
+      ['Heute', iso(t0), ''],
+      ['Morgen', iso(addDays(t0, 1)), ''],
+      ['Fr–Sa', iso(fr), iso(addDays(fr, 1))],
+      ['Sa–So', iso(addDays(fr, 1)), iso(addDays(fr, 2))],
+      ['Fr–So', iso(fr), iso(addDays(fr, 2))]
+    ].map((c) => {
+      const on = cur === c[1] + '|' + c[2];
+      return h('button', { class: on ? 'on' : '', onclick: () => set(c[1], c[2]) }, (on ? '✓ ' : '') + c[0]);
+    }));
   }
   function viewPreise(main) {
     if (state.pmode == null) { try { state.pmode = localStorage.getItem('mxPmode') || 'kacheln'; } catch (e) { state.pmode = 'kacheln'; } }

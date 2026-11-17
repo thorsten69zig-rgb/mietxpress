@@ -464,3 +464,8 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .tabs button{min-height:46px;font-size:15px}
 @media (min-width:700px){.tiles{grid-template-columns:repeat(4,1fr)}}
 @media (min-width:1000px){.tiles{grid-template-columns:repeat(5,1fr)}}
+/* v40: Schnelldatum – Auswahl klar erkennbar */
+.chips.qd button{background:var(--card);color:var(--text);border:2px solid var(--line);font-weight:800}
+.chips.qd button.on{background:var(--navy,#1a2340);color:#fff;border-color:var(--navy,#1a2340);box-shadow:0 0 0 3px rgba(107,182,236,.45)}
+@media (prefers-color-scheme:dark){.chips.qd button.on{background:#6bb6ec;color:#0d1220;border-color:#6bb6ec;box-shadow:0 0 0 3px rgba(107,182,236,.35)}}
+.pinfo{font-size:15px}
