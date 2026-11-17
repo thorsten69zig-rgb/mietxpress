@@ -469,3 +469,14 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .chips.qd button.on{background:var(--navy,#1a2340);color:#fff;border-color:var(--navy,#1a2340);box-shadow:0 0 0 3px rgba(107,182,236,.45)}
 @media (prefers-color-scheme:dark){.chips.qd button.on{background:#6bb6ec;color:#0d1220;border-color:#6bb6ec;box-shadow:0 0 0 3px rgba(107,182,236,.35)}}
 .pinfo{font-size:15px}
+/* v41: Schnellansicht (iPad) */
+.wrap.schnell{max-width:none}
+.schnell main{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.schnell .sp{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;padding-right:2px}
+.sphead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
+.sphead b{font-size:17px;line-height:1.2}
+.sphead .btn{width:auto;padding:0 16px;min-height:46px;font-size:15px;white-space:nowrap}
+.chipsrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.chipsrow .pav{font-size:13px;padding:5px 11px}
+@media (max-width:899px){.schnell main{grid-template-columns:1fr}.schnell .sp{position:static;max-height:none;overflow:visible}}
+@media (min-width:900px){.schnell .tiles{grid-template-columns:repeat(2,1fr)}}

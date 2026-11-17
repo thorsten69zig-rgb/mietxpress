@@ -37,6 +37,7 @@
 
   state.cursor = new Date(today0().getFullYear(), today0().getMonth(), 1);
   state.sel = iso(today0());
+  try { if (/[?&]ansicht=schnell\b/.test(location.search)) localStorage.setItem('mxSchnell', '1'); if (/[?&]ansicht=normal\b/.test(location.search)) localStorage.setItem('mxSchnell', '0'); state.schnell = localStorage.getItem('mxSchnell') === '1'; } catch (e) { state.schnell = /[?&]ansicht=schnell\b/.test(location.search); }
   state.von = iso(today0());
   state.weekStart = iso(addDays(today0(), -((today0().getDay() + 6) % 7)));
   state.selA = state.selB = iso(today0());
@@ -632,7 +633,7 @@
     const p = String(t).split(/\s*[,+&]\s*|\s+und\s+/).filter(Boolean);
     return p.length > 1 ? p[0] + ' +' + (p.length - 1) : p[0] || '';
   }
-  function viewMonat(main) {
+  function viewMonat(main, noPanel) {
     const c = state.cursor, y = c.getFullYear(), mo = c.getMonth();
     main.append(h('div', { class: 'mnav' },
       h('button', { 'aria-label': 'Vorheriger Monat', onclick: () => gotoMonth(y, mo - 1) }, '‹'),
@@ -666,7 +667,7 @@
       const more = 0;
       grid.append(h('button', {
         class: 'day' + (d.getMonth() !== mo ? ' out' : '') + (ds === ts ? ' today' : '') + (ds === state.sel ? ' sel' : ''),
-        onclick: () => { state.sel = ds; render(); }
+        onclick: () => { state.sel = ds; if (state.schnell) { state.pvon = ds; state.pbis = ''; } render(); }
       },
         h('div', { class: 'dn' }, d.getDate()),
         list.slice(0, bShown).map((b) => {
@@ -681,6 +682,7 @@
     }
     main.append(grid);
     fitGrid(grid, rows);
+    if (noPanel) return;
 
     const rank = (x) => x.status === 'angefragt' ? 0 : (foldMode(x) && !state.open['z' + x.id] ? 1 : 2);
     const sel = (map[state.sel] || []).slice().sort((x, y) => (rank(x) - rank(y)) || sortByStart(x, y));
@@ -1009,6 +1011,7 @@
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
         h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
+        h('button', { class: 'btn', onclick: () => setSchnell(!state.schnell) }, state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad) öffnen'),
         h('button', { class: 'btn sec', onclick: () => { state.menu = false; state.bestandOpen = true; render(); window.scrollTo(0, 0); } }, 'Bestand bearbeiten'),
         h('button', { class: 'btn sec', onclick: pickLogo }, 'Logo ändern (dieses Gerät)'),
         state.logo ? h('button', { class: 'btn sec', onclick: resetLogo }, 'Logo zurücksetzen') : null,
@@ -1024,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 40')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 41')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1700,6 +1703,38 @@
         h('div', {}, h('b', {}, 'Kontakt: '), '0163 3865144 · info@muellers-mietxpress.de'),
         h('div', { class: 'pextra' }, 'Preisliste 2026, Stand 10/2026')));
   }
+  // ===== Schnellansicht (iPad): links Kalender, rechts Tag / Preise =====
+  function setSchnell(on) {
+    state.schnell = !!on; state.menu = false;
+    try { localStorage.setItem('mxSchnell', on ? '1' : '0'); } catch (e) {}
+    render(); window.scrollTo(0, 0);
+  }
+  function schnellPanel(R) {
+    const map = dayMap(), ems = evMap(), sel = state.sel;
+    const pane = state.spane === 'preise' ? 'preise' : 'tag';
+    R.append(h('div', { class: 'sphead' },
+      h('b', {}, fmtFull(sel)),
+      h('button', { class: 'btn', onclick: () => openEdit(null) }, '+ Neue Buchung')));
+    R.append(h('div', { class: 'seg' }, [['tag', 'Dieser Tag'], ['preise', 'Preise & frei']].map((m) =>
+      h('button', { class: pane === m[0] ? 'on' : '', onclick: () => { state.spane = m[0]; if (m[0] === 'preise' && !state.pvon) { state.pvon = sel; } render(); } }, m[1]))));
+    if (pane === 'preise') { viewPreise(R); return; }
+    const list = (map[sel] || []).slice().sort(sortByStart);
+    if (list.length) list.forEach((b) => R.append(card(b)));
+    else R.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
+    const dayEv = (ems[sel] || []).slice().sort(byKind);
+    dayEv.forEach((ev) => R.append(evRow(ev)));
+    // Ausgebucht / teils frei an diesem Tag
+    const no = [], mid = [];
+    PRICES.forEach((g) => g.items.forEach((it) => {
+      const av = availOf(it, sel, sel); if (!av) return;
+      if (av.c === 'no') no.push(it); else if (av.c === 'mid') mid.push([it, av.t]);
+    }));
+    R.append(h('div', { class: 'grp grp-mx' }, 'Ausgebucht an diesem Tag'),
+      no.length ? h('div', { class: 'chipsrow' }, no.map((it) => h('span', { class: 'pav no' }, it.n))) : h('div', { class: 'empty' }, 'Nichts ausgebucht.'));
+    if (mid.length) R.append(h('div', { class: 'grp grp-priv' }, 'Teilweise frei'),
+      h('div', { class: 'chipsrow' }, mid.map((m) => h('span', { class: 'pav mid' }, m[0].n + ' · ' + m[1]))));
+    R.append(h('button', { class: 'btn sec', style: 'margin-top:10px', onclick: () => { state.spane = 'preise'; state.pvon = sel; render(); } }, 'Preise & frei für diesen Tag'));
+  }
   function bookFromTile(it, vs, bs, price) {
     openEdit(null);
     const d = state.edit.d, a = vs || d.start, e = (bs && bs >= a) ? bs : a;
@@ -1959,7 +1994,7 @@
     const app = document.getElementById('app');
     const y = window.scrollY;
     app.replaceChildren();
-    const wrap = h('div', { class: 'wrap' });
+    const wrap = h('div', { class: 'wrap' + (state.schnell ? ' schnell' : '') });
     wrap.append(h('header', {},
       h('img', { class: 'logoimg', src: state.logo || 'logo.jpg', alt: 'müllers-MietXpress' }),
       h('div', { class: 'ttl' }, h('h1', {}, 'MietXpress'), h('div', { class: 'hdate' }, h('span', {}, today0().toLocaleDateString('de-DE', { weekday: 'long' }) + ' '), h('b', {}, today0().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })))),
@@ -1967,8 +2002,9 @@
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
-    if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
-    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Frei & Preis']].map((t) =>
+    if (state.ready && state.schnell) { const lv = liveStrip(); if (lv) wrap.append(lv); }
+    else if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
+    if (!state.schnell) wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Frei & Preis']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
     if (state.ready && (state.dirty > 0 || (state.drive.id && !state.synced))) wrap.append(syncBanner());
@@ -1980,6 +2016,9 @@
         h('div', { class: 'btns' },
           h('button', { class: 'btn', onclick: () => { state.menu = true; render(); } }, 'Daten laden'),
           h('button', { class: 'btn sec', onclick: async () => { await replaceData(demoData()); render(); } }, 'Mit Beispieldaten ausprobieren'))));
+    } else if (state.schnell) {
+      const L = h('div', { class: 'scol' }), R = h('div', { class: 'sp' });
+      viewMonat(L, true); schnellPanel(R); main.append(L, R);
     } else if (state.view === 'monat') viewMonat(main);
     else if (state.view === 'liste') viewListe(main);
     else if (state.view === 'woche') viewWoche(main);
