@@ -471,15 +471,31 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .pinfo{font-size:15px}
 /* v41: Schnellansicht (iPad) */
 .wrap.schnell{max-width:none}
-.schnell main{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.schnell .sgrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start}
 .schnell .sp{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;padding-right:2px}
 .sphead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}
 .sphead b{font-size:17px;line-height:1.2}
 .sphead .btn{width:auto;padding:0 16px;min-height:46px;font-size:15px;white-space:nowrap}
 .chipsrow{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
 .chipsrow .pav{font-size:13px;padding:5px 11px}
-@media (max-width:899px){.schnell main{grid-template-columns:1fr}.schnell .sp{position:static;max-height:none;overflow:visible}}
+@media (max-width:899px){.schnell .sgrid{grid-template-columns:1fr}.schnell .sp{position:static;max-height:none;overflow:visible}}
 @media (min-width:900px){.schnell .tiles{grid-template-columns:repeat(2,1fr)}}
 /* v42: Tablet-Button im Kopf, Online-Anzeige auf kleinen Geräten kompakt */
 .iconbtn.on{background:var(--navy,#1a2340);border-color:var(--navy,#1a2340)}
 @media (max-width:480px){.net{font-size:0;padding:0;width:12px;height:12px;min-width:12px}.net.on{background:#2fa66a}.net.off{background:var(--accent)}}
+
+/* v43: Schnellansicht – zwei Vollbild-Modi */
+.sbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+.sbar button{display:flex;flex-direction:column;align-items:center;gap:2px;min-height:68px;border-radius:16px;border:2px solid var(--line);background:var(--card);color:var(--text);font-size:18px;font-weight:900}
+.sbar button span{font-size:22px;line-height:1}
+.sbar button small{font-size:12px;font-weight:600;color:var(--muted)}
+.sbar button.on{background:var(--navy,#1a2340);border-color:var(--navy,#1a2340);color:#fff}
+.sbar button.on small{color:rgba(255,255,255,.75)}
+@media (prefers-color-scheme:dark){.sbar button.on{background:#3b4f86;border-color:#6bb6ec}}
+.spfull{max-width:1200px;margin:0 auto}
+.srow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin:0 0 6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);border-left:6px solid var(--pc,var(--line));background:var(--card);color:var(--text);font-size:14px}
+.srow b{font-weight:800;white-space:nowrap}
+.srow span{flex:1;min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow i{font-style:normal;color:var(--muted)}
+@media (min-width:700px){.schnell .spfull .tiles{grid-template-columns:repeat(3,1fr)}.schnell .spfull .tile .tp{font-size:32px}.schnell .spfull .tile .tn{font-size:16px}}
+@media (min-width:1000px){.schnell .spfull .tiles{grid-template-columns:repeat(4,1fr)}}

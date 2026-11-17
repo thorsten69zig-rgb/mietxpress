@@ -1027,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 42')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 43')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1710,30 +1710,36 @@
     render(); window.scrollTo(0, 0);
   }
   function schnellPanel(R) {
-    const map = dayMap(), ems = evMap(), sel = state.sel;
-    const pane = state.spane === 'preise' ? 'preise' : 'tag';
+    const map = dayMap(), sel = state.sel;
     R.append(h('div', { class: 'sphead' },
       h('b', {}, fmtFull(sel)),
       h('button', { class: 'btn', onclick: () => openEdit(null) }, '+ Neue Buchung')));
-    R.append(h('div', { class: 'seg' }, [['tag', 'Dieser Tag'], ['preise', 'Preise & frei']].map((m) =>
-      h('button', { class: pane === m[0] ? 'on' : '', onclick: () => { state.spane = m[0]; if (m[0] === 'preise' && !state.pvon) { state.pvon = sel; } render(); } }, m[1]))));
-    if (pane === 'preise') { viewPreise(R); return; }
     const list = (map[sel] || []).slice().sort(sortByStart);
-    if (list.length) list.forEach((b) => R.append(card(b)));
+    if (list.length) list.forEach((b) => {
+      const k = 's' + b.id, op = !!state.open[k];
+      R.append(h('button', { class: 'srow', style: '--pc:' + bookCatColor(b), onclick: () => { state.open[k] = !op; render(); } },
+        h('b', {}, abbrArt(b.artikel) || b.name || '—'),
+        h('span', {}, [b.name, b.start === sel ? (b.abholzeit ? '↑ ' + b.abholzeit : '') : (b.ende === sel && b.rueckzeit ? '↓ ' + b.rueckzeit : ''), STATUS[b.status]].filter(Boolean).join(' · ')),
+        h('i', {}, op ? '▴' : '▾')));
+      if (op) R.append(card(b));
+    });
     else R.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
-    const dayEv = (ems[sel] || []).slice().sort(byKind);
-    dayEv.forEach((ev) => R.append(evRow(ev)));
     // Ausgebucht / teils frei an diesem Tag
     const no = [], mid = [];
     PRICES.forEach((g) => g.items.forEach((it) => {
       const av = availOf(it, sel, sel); if (!av) return;
       if (av.c === 'no') no.push(it); else if (av.c === 'mid') mid.push([it, av.t]);
     }));
-    R.append(h('div', { class: 'grp grp-mx' }, 'Ausgebucht an diesem Tag'),
-      no.length ? h('div', { class: 'chipsrow' }, no.map((it) => h('span', { class: 'pav no' }, it.n))) : h('div', { class: 'empty' }, 'Nichts ausgebucht.'));
-    if (mid.length) R.append(h('div', { class: 'grp grp-priv' }, 'Teilweise frei'),
-      h('div', { class: 'chipsrow' }, mid.map((m) => h('span', { class: 'pav mid' }, m[0].n + ' · ' + m[1]))));
-    R.append(h('button', { class: 'btn sec', style: 'margin-top:10px', onclick: () => { state.spane = 'preise'; state.pvon = sel; render(); } }, 'Preise & frei für diesen Tag'));
+    if (no.length) R.append(h('div', { class: 'grp grp-mx' }, 'Ausgebucht'), h('div', { class: 'chipsrow' }, no.map((it) => h('span', { class: 'pav no' }, it.n))));
+    if (mid.length) R.append(h('div', { class: 'grp grp-priv' }, 'Teilweise frei'), h('div', { class: 'chipsrow' }, mid.map((m) => h('span', { class: 'pav mid' }, m[0].n + ' · ' + m[1]))));
+    if (!no.length && !mid.length) R.append(h('div', { class: 'grp grp-priv' }, 'Alles frei'));
+  }
+  function schnellBar() {
+    const m = state.smode === 'preise' ? 'preise' : 'kal';
+    const go = (x) => () => { state.smode = x; if (x === 'preise') { state.pvon = state.pvon || state.sel; } render(); window.scrollTo(0, 0); };
+    return h('div', { class: 'sbar' },
+      h('button', { class: m === 'kal' ? 'on' : '', onclick: go('kal') }, h('span', {}, '📅'), 'Kalender', h('small', {}, 'Ist es frei? Eintragen')),
+      h('button', { class: m === 'preise' ? 'on' : '', onclick: go('preise') }, h('span', {}, '💶'), 'Was kostet was?', h('small', {}, 'Preise & frei')));
   }
   function bookFromTile(it, vs, bs, price) {
     openEdit(null);
@@ -2018,8 +2024,12 @@
           h('button', { class: 'btn', onclick: () => { state.menu = true; render(); } }, 'Daten laden'),
           h('button', { class: 'btn sec', onclick: async () => { await replaceData(demoData()); render(); } }, 'Mit Beispieldaten ausprobieren'))));
     } else if (state.schnell) {
-      const L = h('div', { class: 'scol' }), R = h('div', { class: 'sp' });
-      viewMonat(L, true); schnellPanel(R); main.append(L, R);
+      main.append(schnellBar());
+      if (state.smode === 'preise') { const P = h('div', { class: 'spfull' }); viewPreise(P); main.append(P); }
+      else {
+        const L = h('div', { class: 'scol' }), R = h('div', { class: 'sp' });
+        viewMonat(L, true); schnellPanel(R); main.append(h('div', { class: 'sgrid' }, L, R));
+      }
     } else if (state.view === 'monat') viewMonat(main);
     else if (state.view === 'liste') viewListe(main);
     else if (state.view === 'woche') viewWoche(main);
