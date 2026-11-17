@@ -527,6 +527,7 @@
         h('div', { class: 'tl' }, h('b', {}, 'Abholung'), ' ' + wd(b.start) + ' ' + fmtD(b.start) + ' · ' + hhmm(b.abholzeit || b.zeit)),
         h('div', { class: 'tl' }, h('b', {}, 'Rückgabe'), ' ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start) + ' · ' + hhmm(b.rueckzeit), h('span', { class: 'dayc' }, days + (days === 1 ? ' Tag' : ' Tage'))),
         h('div', { class: 'money' }, money('Gesamtpreis', eur0(b.preis)), money('Anzahlung', eur0(b.anzahlung)), money(kLabel, b.kaution > 0 ? eur0(b.kaution) : '—')),
+        (() => { const lp = listDev(b); return lp != null ? h('div', { class: 'devi' }, '⚠ Preis weicht von der Preisliste ab (Liste: ' + eur0(lp) + ')') : null; })(),
         payOpen && total > 0 ? h('div', { class: 'pay' }, h('div', {}, h('div', {}, 'Bei Abholung zu zahlen'), h('small', {}, payParts)), h('b', {}, eur0(total))) : null,
         payOpen && total === 0 && b.preis > 0 ? h('div', { class: 'pay ok' }, '✓ Alles bezahlt') : null,
         (b.plattform || b.adresse) ? h('div', { class: 'srcrow' },
@@ -1028,7 +1029,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 49')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 50')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1329,7 +1330,7 @@
         h('button', { class: 'btn sec', onclick: () => { d.positionen.push({ artikel: '', anzahl: 1 }); paintEdit(); } }, '+ Artikel hinzufügen'),
         warnEl),
       h('div', { class: 'box' },
-        h('div', { class: 'pdates' }, fld('Preis (€)', (e.preisEl = txt('preis', { inputmode: 'decimal', oninput: (ev) => { d.preis = ev.target.value; e.preisMan = true; } }))), fld('Anzahlung (€)', txt('anzahlung', { inputmode: 'decimal' }))),
+        h('div', { class: 'pdates' }, fld('Preis (€)', (e.preisEl = txt('preis', { inputmode: 'decimal', oninput: (ev) => { d.preis = ev.target.value; e.preisMan = true; const c = calcPrice(d); if (e.hintEl && c && c.preis != null) e.hintEl.textContent = toNum(d.preis) !== c.preis ? '⚠ Weicht von der Preisliste ab (Liste: ' + c.preis + ' €).' : 'Entspricht der Preisliste.'; } }))), fld('Anzahlung (€)', txt('anzahlung', { inputmode: 'decimal' }))),
         h('div', { class: 'pdates' }, fld('Kaution (€)', (e.kautEl = txt('kaution', { inputmode: 'decimal', oninput: (ev) => { d.kaution = ev.target.value; e.kautionMan = true; } }))),
           fld('Kaution-Status', (e.kstEl = sel('kautionStatus', [['keine', 'Keine'], ['offen', 'Offen'], ['erhalten', 'Erhalten'], ['zurueck', 'Zurückgegeben']])))),
         h('div', { class: 'autohint' }, (e.hintEl = h('span', {})), ' ', h('button', { class: 'btn sec sm', onclick: () => { e.preisMan = e.kautionMan = false; autoCalc(true); } }, 'Neu berechnen')),
@@ -2063,6 +2064,39 @@
   }
 
   // Immer sichtbar: was gerade draußen ist und welche Anfragen offen sind (nur Produkt)
+  // ===== Heute: was geht raus, was kommt zurück, was ist offen =====
+  function listDev(b) {
+    if (!(Number(b.preis) > 0) || ['angefragt', 'bestaetigt', 'abgeholt'].indexOf(b.status) < 0) return null;
+    if (/paket/i.test((b.notiz || '') + ' ' + (b.artikel || ''))) return null;
+    const pos = Avail.positionsOf(b, state.arts).map((p) => ({ artikel: p.artikel, anzahl: p.anzahl }));
+    const c = calcPrice({ start: b.start, ende: b.ende || b.start, positionen: pos });
+    return c && c.preis != null && c.preis !== Number(b.preis) ? c.preis : null;
+  }
+  function todayBox() {
+    const T = iso(today0());
+    const go = (day) => () => { if (!state.schnell) state.view = 'monat'; state.sel = day; state.cursor = new Date(parse(day).getFullYear(), parse(day).getMonth(), 1); render(); window.scrollTo(0, 0); };
+    const open = (b) => (b.kaution > 0 && b.kautionStatus !== 'erhalten' && b.kautionStatus !== 'zurueck' ? b.kaution : 0);
+    const raus = state.bookings.filter((b) => (b.status === 'bestaetigt' || b.status === 'angefragt') && b.start === T).sort(sortByStart);
+    const zur = state.bookings.filter((b) => b.status === 'abgeholt' && (b.ende || b.start) <= T).sort((x, y) => (x.ende || x.start).localeCompare(y.ende || y.start));
+    const offen = [];
+    state.bookings.filter((b) => b.status === 'angefragt' && b.start >= T && !(Number(b.anzahlung) > 0)).sort(sortByStart).slice(0, 6)
+      .forEach((b) => offen.push({ b, t: 'Anzahlung fehlt', d: b.start }));
+    state.bookings.filter((b) => b.status === 'zurueck' && b.kaution > 0 && b.kautionStatus === 'erhalten')
+      .forEach((b) => offen.push({ b, t: 'Kaution zurückgeben ' + eur0(b.kaution), d: b.ende || b.start }));
+    const row = (b, info, cls, day) => h('button', { class: 'trow ' + (cls || ''), style: '--pc:' + bookCatColor(b), onclick: go(day || b.start) },
+      h('b', {}, (abbrArt(b.artikel) || b.artikel || '(ohne Artikel)')), h('span', {}, (b.name || '(ohne Name)')), h('em', {}, info));
+    const col = (title, n, rows, empty) => h('div', { class: 'tcol' }, h('div', { class: 'tcap' }, title, n ? h('i', {}, String(n)) : null), rows.length ? rows : h('div', { class: 'tnone' }, empty));
+    return h('div', { class: 'today' },
+      col('HEUTE RAUS', raus.length, raus.map((b) => {
+        const z = Math.max(0, b.preis - b.anzahlung) + open(b);
+        return row(b, hhmm(b.abholzeit || b.zeit) + (b.status === 'angefragt' ? ' · angefragt' : '') + (z > 0 ? ' · kassieren ' + eur0(z) : ' · bezahlt ✓'));
+      }), 'Keine Abholung'),
+      col('ZURÜCK', zur.length, zur.map((b) => {
+        const e = b.ende || b.start, late = e < T;
+        return row(b, (late ? 'überfällig seit ' + fmtD(e) : hhmm(b.rueckzeit)) + (open(b) ? ' · Kaution ' + eur0(open(b)) : ''), late ? 'late' : '', e);
+      }), 'Nichts zurück'),
+      col('OFFEN', offen.length, offen.map((o) => row(o.b, o.t + (o.t.indexOf('Anzahlung') === 0 ? ' · ab ' + fmtD(o.d) : ''), '', o.d)), 'Nichts offen'));
+  }
   function liveStrip() {
     const out = state.bookings.filter((b) => b.status === 'abgeholt').sort((x, y) => (x.ende || x.start).localeCompare(y.ende || y.start));
     const req = state.bookings.filter((b) => b.status === 'angefragt').sort(sortByStart);
@@ -2087,8 +2121,8 @@
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
-    if (state.ready && state.schnell) { const lv = liveStrip(); if (lv) wrap.append(lv); }
-    else if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
+    if (state.ready && state.schnell) { if (state.bookings.length) wrap.append(todayBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
+    else if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(todayBox()); wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
     if (!state.schnell) wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Frei & Preis']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
