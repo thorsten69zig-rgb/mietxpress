@@ -1027,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 44')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 45')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1682,6 +1682,7 @@
         })));
       });
       if (!box.childNodes.length) box.append(h('div', { class: 'empty' }, 'Nichts gefunden.'));
+      else box.append(h('div', { class: 'phints' }, h('div', {}, h('b', {}, 'Mietzeit: '), '1 Tag = i. d. R. 9:00 – 21:00 Uhr'), h('div', {}, h('b', {}, 'Preise: '), '1 Tag, 2 Tage, 3 Tage – ab 4 Tagen auf Anfrage')));
       return;
     }
     PRICES.forEach((g, gi) => {
