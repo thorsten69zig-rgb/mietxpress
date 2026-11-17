@@ -499,3 +499,15 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .srow i{font-style:normal;color:var(--muted)}
 @media (min-width:700px){.schnell .spfull .tiles{grid-template-columns:repeat(3,1fr)}.schnell .spfull .tile .tp{font-size:32px}.schnell .spfull .tile .tn{font-size:16px}}
 @media (min-width:1000px){.schnell .spfull .tiles{grid-template-columns:repeat(4,1fr)}}
+
+/* v44 Preisstaffel 1/2/3/4 Tage */
+.tile .tmini{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tile .tmini span{background:var(--chip);border-radius:8px;padding:3px 2px;text-align:center;line-height:1.15}
+.tile .tmini i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
+.tile .tmini b{font-size:12.5px}
+.tile .tmini span.hit{background:var(--navy);color:#fff}
+.tile .tmini span.hit i{color:#c9d2ea}
+.tile .tmini span.hit b{color:var(--yellow)}
+.ptiers{grid-template-columns:repeat(4,1fr)!important}
+.tier.req b{font-size:11px}
+@media (min-width:700px){.schnell .spfull .tile .tmini b{font-size:15px}.schnell .spfull .tile .tmini i{font-size:12px}}

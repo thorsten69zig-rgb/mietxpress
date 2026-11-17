@@ -1027,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 43')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 44')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1589,7 +1589,7 @@
   async function resetLogo() { state.logo = null; await DB.setMeta('logo', null); render(); toast('Logo zurückgesetzt'); }
 
   // ===== Preisliste 2026 (Stand 10/2026) =====
-  const TIERS = [['Tagespreis', '1 Tag (Mo–So)'], ['Fr–Sa / Sa–So', 'Wochenendpaket Fr–Sa / Sa–So'], ['Fr–So ganzes WE', 'Wochenendpaket Fr–So']];
+  const TIERS = [['1 Tag', 'Tagespreis (1 Tag)'], ['2 Tage', 'Preis für 2 Tage'], ['3 Tage', 'Preis für 3 Tage'], ['4 Tage', '4 Tage und mehr: auf Anfrage']];
   const PRICES = [
     { cat: 'Kombi-Angebote', short: 'Kombi', items: [
       { n: 'Hüpfburg + JBL PartyBox 520', inv: null, p: [80, 130, 160], k: 200,
@@ -1629,11 +1629,8 @@
   const diffDays = (a, b) => Math.round((Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()) - Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
   function matchTier(vs, bs) {
     if (!vs) return -1; bs = bs || vs; if (bs < vs) bs = vs;
-    const d0 = parse(vs), n = diffDays(parse(bs), d0) + 1, dow = (d0.getDay() + 6) % 7;
-    if (n === 1) return 0;
-    if (n === 2 && (dow === 4 || dow === 5)) return 1;
-    if (n === 3 && dow === 4) return 2;
-    return -1;
+    const n = diffDays(parse(bs), parse(vs)) + 1;
+    return n >= 4 ? 3 : n - 1;
   }
   function availOf(it, vs, bs) {
     if (!vs || !it.inv) return null;
@@ -1649,7 +1646,7 @@
     return h('div', { class: 'pcard' },
       h('div', { class: 'ptop' }, h('div', { class: 'pname' }, it.n), av ? h('span', { class: 'pav ' + av.c }, av.t) : null),
       it.note ? h('div', { class: 'pextra' }, it.note) : null,
-      h('div', { class: 'ptiers' }, it.p.map((v, i) => h('div', { class: 'tier' + (i === tier ? ' hit' : '') }, h('small', {}, TIERS[i][0]), h('b', {}, v + ' €')))),
+      h('div', { class: 'ptiers' }, it.p.concat(['auf Anfrage']).map((v, i) => h('div', { class: 'tier' + (i === tier ? ' hit' : '') + (i === 3 ? ' req' : '') }, h('small', {}, TIERS[i][0]), h('b', {}, i === 3 ? 'Anfrage' : v + ' €')))),
       (it.x || []).map((x) => h('div', { class: 'pextra' }, x)),
       h('span', { class: 'pk' }, 'Kaution ' + it.k + ' €' + (it.kp ? ' ' + it.kp : '')));
   }
@@ -1663,7 +1660,7 @@
     if (vs) {
       const last = bs < vs ? vs : bs, n = diffDays(parse(last), parse(vs)) + 1;
       info.append(h('div', { class: 'pinfo' }, h('b', {}, fmtD(vs) + (last !== vs ? ' – ' + fmtD(last) : '')),
-        ' · ' + n + (n === 1 ? ' Tag' : ' Tage') + ' · ', tier >= 0 ? TIERS[tier][1] : 'kein Standardpaket, Preis pro Tag bzw. nach Absprache'));
+        ' · ' + n + (n === 1 ? ' Tag' : ' Tage') + ' · ', TIERS[tier][1]));
     }
     if (state.pmode !== 'karten') {
       const last0 = (bs < vs ? vs : bs) || vs, n0 = vs ? diffDays(parse(last0), parse(vs)) + 1 : 1;
@@ -1673,11 +1670,12 @@
         box.append(h('div', { class: 'pcat', id: 'pc-' + gi }, g.cat));
         box.append(h('div', { class: 'tiles' }, items.map((it) => {
           const av = availOf(it, vs, bs);
-          const price = tier >= 0 ? it.p[tier] : it.p[0] * n0;
-          const lbl = !vs ? 'pro Tag' : tier >= 0 ? TIERS[tier][0] : n0 + (n0 === 1 ? ' Tag' : ' Tage');
+          const req = tier === 3, price = req ? 0 : it.p[tier >= 0 ? tier : 0];
+          const lbl = !vs ? '1 Tag' : TIERS[tier][0];
           return h('div', { class: 'tile ' + (av ? av.c : '') },
             h('div', { class: 'tn' }, it.n),
-            h('div', { class: 'tp' }, (!vs ? it.p[0] : price) + ' €', h('small', {}, ' ' + lbl)),
+            h('div', { class: 'tp' }, req ? 'auf Anfrage' : price + ' €', h('small', {}, ' ' + lbl)),
+            h('div', { class: 'tmini' }, it.p.concat(['Anfrage']).map((v, i) => h('span', { class: i === (vs ? tier : 0) ? 'hit' : '' }, h('i', {}, TIERS[i][0].replace(' Tage', ' T').replace(' Tag', ' T')), h('b', {}, i === 3 ? 'auf Anfr.' : v + ' €')))),
             av ? h('span', { class: 'pav ' + av.c }, av.t) : h('span', { class: 'pav' }, 'Termin wählen'),
             h('div', { class: 'tk' }, 'Kaution ' + it.k + ' €' + (it.kp ? ' ' + it.kp : '')),
             it.inv ? h('button', { class: 'tbook', onclick: () => bookFromTile(it, vs, bs, vs ? price : it.p[0]) }, '+ Anfrage anlegen') : null);
@@ -1696,7 +1694,7 @@
     box.append(h('div', { class: 'pcat' }, 'Allgemeine Hinweise'),
       h('div', { class: 'phints' },
         h('div', {}, h('b', {}, 'Mietzeit: '), '1 Tag = i. d. R. 9:00 – 21:00 Uhr'),
-        h('div', {}, h('b', {}, 'Pakete: '), 'Fr–Sa / Sa–So und Fr–So sind Wochenendpakete (Pauschalpreis)'),
+        h('div', {}, h('b', {}, 'Pakete: '), 'Preise nach Tagen: 1 Tag, 2 Tage, 3 Tage – ab 4 Tagen auf Anfrage (Pauschalpreis)'),
         h('div', {}, h('b', {}, 'Lieferung: '), 'Ruhrgebiet & Umgebung. Stehtische und Bierzeltgarnituren ab 6 Stück: 1 €/km · 4 Fahrten'),
         h('div', {}, h('b', {}, 'Kaution: '), 'wird bei Rückgabe vollständig erstattet'),
         h('div', {}, h('b', {}, 'Steuer: '), '§19 Abs. 1 UStG, keine Mehrwertsteuer'),
