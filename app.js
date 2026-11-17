@@ -1027,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 46')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 47')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1278,6 +1278,13 @@
         fld('Adresse', txt('adresse')),
         fld('Quelle', sel('plattform', plats.map((x) => [x, x])))),
       h('div', { class: 'box' },
+        h('div', { class: 'chips qd dchips' }, [1, 2, 3].map((n) => {
+          const cur = d.start && d.ende ? diffDays(parse(d.ende), parse(d.start)) + 1 : 0, on = cur === n;
+          return h('button', { class: 'chip' + (on ? ' on' : ''), type: 'button', onclick: () => {
+            if (!d.start) d.start = iso(today0());
+            d.ende = iso(addDays(parse(d.start), n - 1)); paintEdit();
+          } }, (on ? '✓ ' : '') + n + (n === 1 ? ' Tag' : ' Tage'));
+        })),
         h('div', { class: 'pdates' }, fld('Abholung (Datum)', date('start')), fld('Rückgabe (Datum)', date('ende'))),
         h('div', { class: 'pdates' }, fld('Abholzeit', time('abholzeit')), fld('Rückgabezeit', time('rueckzeit')))),
       h('div', { class: 'box' },
