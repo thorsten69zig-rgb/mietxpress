@@ -480,3 +480,6 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .chipsrow .pav{font-size:13px;padding:5px 11px}
 @media (max-width:899px){.schnell main{grid-template-columns:1fr}.schnell .sp{position:static;max-height:none;overflow:visible}}
 @media (min-width:900px){.schnell .tiles{grid-template-columns:repeat(2,1fr)}}
+/* v42: Tablet-Button im Kopf, Online-Anzeige auf kleinen Geräten kompakt */
+.iconbtn.on{background:var(--navy,#1a2340);border-color:var(--navy,#1a2340)}
+@media (max-width:480px){.net{font-size:0;padding:0;width:12px;height:12px;min-width:12px}.net.on{background:#2fa66a}.net.off{background:var(--accent)}}
