@@ -1027,7 +1027,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 45')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 46')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1156,9 +1156,44 @@
     if (sp) w.push('🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : ''));
     return w;
   }
+  function calcPrice(d) {
+    if (!d.start) return null;
+    const n = Math.max(1, diffDays(parse(d.ende && d.ende >= d.start ? d.ende : d.start), parse(d.start)) + 1);
+    const all = []; PRICES.forEach((g) => g.items.forEach((it) => all.push(it)));
+    const byInv = {}; all.forEach((it) => { if (it.inv) byInv[it.inv] = it; });
+    const kombi = all.filter((it) => !it.inv)[0];
+    const pos = (d.positionen || []).filter((p) => p.artikel && byInv[p.artikel]).map((p) => ({ it: byInv[p.artikel], q: Math.max(1, Number(p.anzahl) || 1) }));
+    if (!pos.length) return null;
+    let preis = 0, kaut = 0, ok = true;
+    const isHuef = (x) => /^Hüpfburg/.test(x.it.inv), isBox = (x) => x.it.inv === 'PartyBox JBL 520';
+    const hi = pos.findIndex(isHuef), bi = pos.findIndex(isBox);
+    const used = {};
+    if (kombi && hi > -1 && bi > -1) {
+      used[hi] = used[bi] = 1;
+      if (n <= 3) preis += kombi.p[n - 1]; else ok = false;
+      kaut += kombi.k;
+    }
+    pos.forEach((x, i) => {
+      const q = used[i] && (i === hi || i === bi) ? x.q - 1 : x.q;
+      if (q <= 0) return;
+      if (n <= 3) preis += x.it.p[n - 1] * q; else ok = false;
+      kaut += x.it.k * q;
+    });
+    return { n, preis: ok ? preis : null, kaut };
+  }
+  function autoCalc(force) {
+    const e = state.edit; if (!e || !e.preisEl) return;
+    const d = e.d, c = calcPrice(d);
+    const may = (k) => force || (!e[k + 'Man'] && (!d.id || !toNum(d[k])));
+    if (!c) { if (e.hintEl) e.hintEl.textContent = ''; return; }
+    if (c.preis != null && may('preis')) { d.preis = c.preis; e.preisEl.value = String(c.preis); }
+    if (may('kaution')) { d.kaution = c.kaut; e.kautEl.value = String(c.kaut); if (c.kaut > 0 && d.kautionStatus === 'keine') { d.kautionStatus = 'offen'; if (e.kstEl) e.kstEl.value = 'offen'; } }
+    if (e.hintEl) e.hintEl.textContent = c.preis == null ? c.n + ' Tage: Preis auf Anfrage, bitte von Hand eintragen. Kaution ' + c.kaut + ' € automatisch.' : 'Automatisch nach Preisliste: ' + c.n + (c.n === 1 ? ' Tag' : ' Tage') + ' = ' + c.preis + ' €, Kaution ' + c.kaut + ' €. Du kannst die Felder überschreiben.';
+  }
   function paintWarn() {
     const e = state.edit;
     if (!e || !e.warnEl) return;
+    autoCalc(false);
     const w = editWarnings(e.d);
     e.warnEl.replaceChildren(...w.map((t) => h('div', {}, '⚠ ' + t)));
     e.warnEl.style.display = w.length ? '' : 'none';
@@ -1251,9 +1286,10 @@
         h('button', { class: 'btn sec', onclick: () => { d.positionen.push({ artikel: '', anzahl: 1 }); paintEdit(); } }, '+ Artikel hinzufügen'),
         warnEl),
       h('div', { class: 'box' },
-        h('div', { class: 'pdates' }, fld('Preis (€)', txt('preis', { inputmode: 'decimal' })), fld('Anzahlung (€)', txt('anzahlung', { inputmode: 'decimal' }))),
-        h('div', { class: 'pdates' }, fld('Kaution (€)', txt('kaution', { inputmode: 'decimal' })),
-          fld('Kaution-Status', sel('kautionStatus', [['keine', 'Keine'], ['offen', 'Offen'], ['erhalten', 'Erhalten'], ['zurueck', 'Zurückgegeben']]))),
+        h('div', { class: 'pdates' }, fld('Preis (€)', (e.preisEl = txt('preis', { inputmode: 'decimal', oninput: (ev) => { d.preis = ev.target.value; e.preisMan = true; } }))), fld('Anzahlung (€)', txt('anzahlung', { inputmode: 'decimal' }))),
+        h('div', { class: 'pdates' }, fld('Kaution (€)', (e.kautEl = txt('kaution', { inputmode: 'decimal', oninput: (ev) => { d.kaution = ev.target.value; e.kautionMan = true; } }))),
+          fld('Kaution-Status', (e.kstEl = sel('kautionStatus', [['keine', 'Keine'], ['offen', 'Offen'], ['erhalten', 'Erhalten'], ['zurueck', 'Zurückgegeben']])))),
+        h('div', { class: 'autohint' }, (e.hintEl = h('span', {})), ' ', h('button', { class: 'btn sec sm', onclick: () => { e.preisMan = e.kautionMan = false; autoCalc(true); } }, 'Neu berechnen')),
         fld('Status', sel('status', Object.keys(STATUS).map((k) => [k, STATUS[k]]), paintWarn))),
       h('div', { class: 'box' }, fld('Notiz', h('textarea', { class: 'inp', rows: '3', oninput: (ev) => { d.notiz = ev.target.value; } }, d.notiz || ''))),
       h('div', { class: 'stack' },
