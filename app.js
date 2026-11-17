@@ -1012,6 +1012,7 @@
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
         h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
+        h('button', { class: 'btn sec', onclick: () => { try { localStorage.setItem('mxHeute', heuteOn() ? '0' : '1'); } catch (e) {} render(); } }, heuteOn() ? 'Heute-Übersicht ausblenden' : 'Heute-Übersicht einblenden'),
         h('button', { class: 'btn', onclick: () => setSchnell(!state.schnell) }, state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad) öffnen'),
         (() => { const st = h('div', { class: 'autohint' }); return h('div', {}, shotButton(() => 'allgemein', st), st); })(),
         h('button', { class: 'btn sec', onclick: () => { state.menu = false; state.bestandOpen = true; render(); window.scrollTo(0, 0); } }, 'Bestand bearbeiten'),
@@ -1029,7 +1030,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 51')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 52')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -2111,6 +2112,7 @@
     const c = calcPrice({ start: b.start, ende: b.ende || b.start, positionen: pos });
     return c && c.preis != null && c.preis !== Number(b.preis) ? c.preis : null;
   }
+  const heuteOn = () => { try { return localStorage.getItem('mxHeute') === '1'; } catch (e) { return false; } };
   function todayBox() {
     const T = iso(today0());
     const go = (day) => () => { if (!state.schnell) state.view = 'monat'; state.sel = day; state.cursor = new Date(parse(day).getFullYear(), parse(day).getMonth(), 1); render(); window.scrollTo(0, 0); };
@@ -2161,8 +2163,8 @@
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
-    if (state.ready && state.schnell) { if (state.bookings.length) wrap.append(todayBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
-    else if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(todayBox()); wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
+    if (state.ready && state.schnell) { if (state.bookings.length && heuteOn()) wrap.append(todayBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
+    else if (state.ready && state.view !== 'preise' && state.bookings.length) { if (heuteOn()) wrap.append(todayBox()); wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
     if (!state.schnell) wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Frei & Preis']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
