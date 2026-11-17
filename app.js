@@ -1024,7 +1024,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 38')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 39')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1662,6 +1662,27 @@
       info.append(h('div', { class: 'pinfo' }, h('b', {}, fmtD(vs) + (last !== vs ? ' – ' + fmtD(last) : '')),
         ' · ' + n + (n === 1 ? ' Tag' : ' Tage') + ' · ', tier >= 0 ? TIERS[tier][1] : 'kein Standardpaket, Preis pro Tag bzw. nach Absprache'));
     }
+    if (state.pmode !== 'karten') {
+      const last0 = (bs < vs ? vs : bs) || vs, n0 = vs ? diffDays(parse(last0), parse(vs)) + 1 : 1;
+      PRICES.forEach((g, gi) => {
+        const items = g.items.filter((it) => !q || (it.n + ' ' + g.cat).toLowerCase().indexOf(q) > -1);
+        if (!items.length) return;
+        box.append(h('div', { class: 'pcat', id: 'pc-' + gi }, g.cat));
+        box.append(h('div', { class: 'tiles' }, items.map((it) => {
+          const av = availOf(it, vs, bs);
+          const price = tier >= 0 ? it.p[tier] : it.p[0] * n0;
+          const lbl = !vs ? 'pro Tag' : tier >= 0 ? TIERS[tier][0] : n0 + (n0 === 1 ? ' Tag' : ' Tage');
+          return h('div', { class: 'tile ' + (av ? av.c : '') },
+            h('div', { class: 'tn' }, it.n),
+            h('div', { class: 'tp' }, (!vs ? it.p[0] : price) + ' €', h('small', {}, ' ' + lbl)),
+            av ? h('span', { class: 'pav ' + av.c }, av.t) : h('span', { class: 'pav' }, 'Termin wählen'),
+            h('div', { class: 'tk' }, 'Kaution ' + it.k + ' €' + (it.kp ? ' ' + it.kp : '')),
+            it.inv ? h('button', { class: 'tbook', onclick: () => bookFromTile(it, vs, bs, vs ? price : it.p[0]) }, '+ Anfrage anlegen') : null);
+        })));
+      });
+      if (!box.childNodes.length) box.append(h('div', { class: 'empty' }, 'Nichts gefunden.'));
+      return;
+    }
     PRICES.forEach((g, gi) => {
       const items = g.items.filter((it) => !q || (it.n + ' ' + g.cat + ' ' + (it.x || []).join(' ') + ' ' + (it.note || '')).toLowerCase().indexOf(q) > -1);
       if (!items.length) return;
@@ -1679,7 +1700,26 @@
         h('div', {}, h('b', {}, 'Kontakt: '), '0163 3865144 · info@muellers-mietxpress.de'),
         h('div', { class: 'pextra' }, 'Preisliste 2026, Stand 10/2026')));
   }
+  function bookFromTile(it, vs, bs, price) {
+    openEdit(null);
+    const d = state.edit.d, a = vs || d.start, e = (bs && bs >= a) ? bs : a;
+    d.start = a; d.ende = e; d.status = 'angefragt'; d.name = d.name || '(Name fehlt)'; d.positionen = [{ artikel: it.inv, anzahl: 1 }];
+    d.preis = price; d.kaution = it.k; d.kautionStatus = 'offen';
+    render();
+  }
+  function quickDates() {
+    const t0 = today0(), dow = (t0.getDay() + 6) % 7, fr = addDays(t0, (4 - dow + 7) % 7);
+    const set = (a, b) => { state.pvon = a; state.pbis = b; render(); };
+    return h('div', { class: 'chips qd' }, [
+      ['Heute', () => set(iso(t0), '')],
+      ['Morgen', () => set(iso(addDays(t0, 1)), '')],
+      ['Fr–Sa', () => set(iso(fr), iso(addDays(fr, 1)))],
+      ['Sa–So', () => set(iso(addDays(fr, 1)), iso(addDays(fr, 2)))],
+      ['Fr–So', () => set(iso(fr), iso(addDays(fr, 2)))]
+    ].map((c) => h('button', { onclick: c[1] }, c[0])));
+  }
   function viewPreise(main) {
+    if (state.pmode == null) { try { state.pmode = localStorage.getItem('mxPmode') || 'kacheln'; } catch (e) { state.pmode = 'kacheln'; } }
     priceEls = { pinfo: h('div', { id: 'pinfo' }), pres: h('div', { id: 'pres' }) };
     const qi = h('input', { class: 'inp', type: 'search', placeholder: 'Produkt suchen …', value: state.priceQ || '', autocomplete: 'off',
       oninput: (e) => { state.priceQ = e.target.value; paintPrices(); } });
@@ -1692,6 +1732,8 @@
           h('label', {}, h('small', {}, 'Wunschtermin von'), von),
           h('label', {}, h('small', {}, 'bis (optional)'), bis),
           h('button', { class: 'btn sec', style: 'width:auto;padding:0 12px', onclick: () => { state.pvon = ''; state.pbis = ''; state.priceQ = ''; von.value = ''; bis.value = ''; qi.value = ''; paintPrices(); } }, 'Leeren'))),
+      quickDates(),
+      h('div', { class: 'seg' }, [['kacheln', 'Kacheln'], ['karten', 'Karten']].map((m) => h('button', { class: (state.pmode !== 'karten' ? 'kacheln' : 'karten') === m[0] ? 'on' : '', onclick: () => { state.pmode = m[0]; try { localStorage.setItem('mxPmode', m[0]); } catch (e) {} render(); } }, m[1]))),
       h('div', { class: 'chips' }, PRICES.map((g, gi) => h('button', { onclick: () => { const e = document.getElementById('pc-' + gi); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, g.short))),
       priceEls.pinfo, priceEls.pres);
     paintPrices();
@@ -1922,7 +1964,7 @@
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
       h('button', { class: 'iconbtn', 'aria-label': 'Daten und Einstellungen', onclick: () => { state.menu = true; render(); } }, '⋯')));
     if (state.ready && state.view !== 'preise' && state.bookings.length) { wrap.append(statsBox()); const lv = liveStrip(); if (lv) wrap.append(lv); }
-    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Preise']].map((t) =>
+    wrap.append(h('div', { class: 'tabs' }, [['monat', 'Monat'], ['woche', 'Woche'], ['liste', 'Liste'], ['preise', 'Frei & Preis']].map((t) =>
       h('button', { class: state.view === t[0] ? 'on' : '', onclick: () => { state.view = t[0]; render(); } }, t[1]))));
 
     if (state.ready && (state.dirty > 0 || (state.drive.id && !state.synced))) wrap.append(syncBanner());
