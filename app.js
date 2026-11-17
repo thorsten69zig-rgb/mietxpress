@@ -1012,6 +1012,7 @@
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
         h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
         h('button', { class: 'btn', onclick: () => setSchnell(!state.schnell) }, state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad) öffnen'),
+        (() => { const st = h('div', { class: 'autohint' }); return h('div', {}, shotButton(() => 'allgemein', st), st); })(),
         h('button', { class: 'btn sec', onclick: () => { state.menu = false; state.bestandOpen = true; render(); window.scrollTo(0, 0); } }, 'Bestand bearbeiten'),
         h('button', { class: 'btn sec', onclick: pickLogo }, 'Logo ändern (dieses Gerät)'),
         state.logo ? h('button', { class: 'btn sec', onclick: resetLogo }, 'Logo zurücksetzen') : null,
@@ -1027,7 +1028,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 48')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 49')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1237,6 +1238,40 @@
     toast('Gespeichert');
   }
 
+  // ===== Screenshots hochladen (landen im Drive, Claude liest sie dort) =====
+  async function shrinkImg(f) {
+    try {
+      if (!f.type || f.type.indexOf('image/') !== 0 || typeof createImageBitmap !== 'function') return f;
+      const bmp = await createImageBitmap(f), sc = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * sc); cv.height = Math.round(bmp.height * sc);
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+      const bl = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.88));
+      return bl || f;
+    } catch (e) { return f; }
+  }
+  const slug = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'ohne-name';
+  function shotButton(getTag, statusEl) {
+    const inp = h('input', { type: 'file', accept: 'image/*', multiple: '', style: 'display:none' });
+    inp.addEventListener('change', async () => {
+      const fl = [...inp.files]; inp.value = '';
+      if (!fl.length) return;
+      if (!navigator.onLine) { statusEl.textContent = '⚠ Zum Hochladen online sein.'; return; }
+      if (!GCAL.isSignedIn()) { try { await GCAL.signIn(); } catch (e) { statusEl.textContent = '⚠ Bitte zuerst im ⋯-Menü mit Google verbinden, dann nochmal.'; return; } }
+      let okn = 0;
+      for (let i = 0; i < fl.length; i++) {
+        statusEl.textContent = 'Lade hoch ' + (i + 1) + ' von ' + fl.length + ' …';
+        try {
+          const bl = await shrinkImg(fl[i]), t = new Date(), ts = iso(t).replace(/-/g, '') + '-' + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds());
+          await GDRIVE.uploadImage(bl, 'mietxpress-screenshot-' + getTag() + '-' + ts + '-' + (i + 1) + '.jpg');
+          okn++;
+        } catch (e) { statusEl.textContent = '⚠ ' + (e.message || 'Upload fehlgeschlagen'); return; }
+      }
+      statusEl.textContent = '✓ ' + okn + (okn === 1 ? ' Bild' : ' Bilder') + ' hochgeladen. Schreib Claude: „Screenshot da“.';
+    });
+    return h('div', {}, h('button', { class: 'btn sec', type: 'button', onclick: () => inp.click() }, '📷 Screenshot hochladen'), inp);
+  }
+
+  const iso8 = (x) => String(x || '').replace(/-/g, '') || 'ohne-datum';
   function viewEdit() {
     const e = state.edit, d = e.d;
     const fld = (label, el, cls) => h('label', { class: 'fld' + (cls ? ' ' + cls : '') }, h('small', {}, label), el);
@@ -1276,7 +1311,8 @@
         fld('Name', txt('name', { autocomplete: 'off' })),
         fld('Telefon', txt('telefon', { type: 'tel', inputmode: 'tel' })),
         fld('Adresse', txt('adresse')),
-        fld('Quelle', sel('plattform', plats.map((x) => [x, x])))),
+        fld('Quelle', sel('plattform', plats.map((x) => [x, x]))),
+        (() => { const st = h('div', { class: 'autohint' }); return h('div', {}, shotButton(() => iso8(d.start) + '-' + slug(d.name), st), st); })()),
       h('div', { class: 'box' },
         h('div', { class: 'chips qd dchips' }, [1, 2, 3].map((n) => {
           const cur = d.start && d.ende ? diffDays(parse(d.ende), parse(d.start)) + 1 : 0, on = cur === n;

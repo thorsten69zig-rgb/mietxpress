@@ -109,6 +109,18 @@ const GDRIVE = (function () {
       artikelAt: art.at, sperrAt: sp.at, stat, upload };
   }
 
-  return { NAME, find, listInbox, download, create, update, merge };
+  // Screenshot/Bild ins Drive legen (Name beginnt mit mietxpress-screenshot, damit Claude es findet)
+  async function uploadImage(blob, name) {
+    const boundary = 'mxi' + Date.now();
+    const meta = JSON.stringify({ name, mimeType: blob.type || 'image/jpeg' });
+    const body = new Blob(['--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
+      '\r\n--' + boundary + '\r\nContent-Type: ' + (blob.type || 'image/jpeg') + '\r\n\r\n', blob, '\r\n--' + boundary + '--']);
+    const res = await check(await GCAL.authFetch(UPLOAD + '?uploadType=multipart&fields=id', {
+      method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body
+    }), 'Bild-Upload');
+    return (await res.json()).id;
+  }
+
+  return { NAME, find, listInbox, download, create, update, merge, uploadImage };
 
 })();
