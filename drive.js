@@ -134,17 +134,18 @@ const GDRIVE = (function () {
     return (await cr.json()).id;
   }
 
-  async function uploadPdf(blob, name, parentId) {
+  async function uploadFile(blob, name, parentId, mime) {
     const boundary = 'mxp' + Date.now();
-    const meta = JSON.stringify({ name, mimeType: 'application/pdf', parents: [parentId] });
+    const meta = JSON.stringify({ name, mimeType: mime, parents: [parentId] });
     const body = new Blob(['--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
-      '\r\n--' + boundary + '\r\nContent-Type: application/pdf\r\n\r\n', blob, '\r\n--' + boundary + '--']);
+      '\r\n--' + boundary + '\r\nContent-Type: ' + mime + '\r\n\r\n', blob, '\r\n--' + boundary + '--']);
     const res = await check(await GCAL.authFetch(UPLOAD + '?uploadType=multipart&fields=id', {
       method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body
-    }), 'PDF-Upload');
+    }), 'Datei-Upload');
     return (await res.json()).id;
   }
+  const uploadPdf = (blob, name, parentId) => uploadFile(blob, name, parentId, 'application/pdf');
 
-  return { NAME, find, listInbox, download, create, update, merge, uploadImage, ensureFolder, uploadPdf };
+  return { NAME, find, listInbox, download, create, update, merge, uploadImage, ensureFolder, uploadPdf, uploadFile };
 
 })();

@@ -101,7 +101,8 @@
     return {
       id: String(a.id || a.name), name: a.name || String(a.id), kategorie: a.kategorie || 'Sonstiges',
       menge: a.menge == null ? null : Number(a.menge), sort: Number(a.sort) || i,
-      enthaelt: Array.isArray(a.enthaelt) ? a.enthaelt : null
+      enthaelt: Array.isArray(a.enthaelt) ? a.enthaelt : null,
+      foto: a.foto == null ? null : !!a.foto
     };
   }
   const isActive = (b) => b.status !== 'storniert';
@@ -337,6 +338,7 @@
       d.msg = 'Abgeglichen: ' + state.bookings.length + ' Buchungen (' + st.neu + ' neu aus Drive, ' + st.aktualisiert + ' aktualisiert, ' + st.geloescht + ' gelöscht). ' +
         (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.')) + inboxMsg + calMsg;
       state.synced = true;
+      try { const nf = await flushFotos(); if (nf) d.msg += ' ' + nf + (nf === 1 ? ' Foto' : ' Fotos') + ' in Drive abgelegt.'; } catch (e) { /* später nochmal */ }
       try { const n = await flushContracts(); if (n) d.msg += ' ' + n + (n === 1 ? ' Mietvertrag' : ' Mietverträge') + ' in Drive abgelegt.'; } catch (e) { /* später nochmal */ }
     } catch (e) { d.err = auto === true ? null : (e.message || 'Fehler beim Abgleichen'); }
     d.busy = false; render();
@@ -1016,6 +1018,8 @@
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
         h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
+        fotoPending() ? h('div', { class: 'warnbox' }, '⏳ ' + fotoPending() + ' Zustandsfotos noch nicht in Drive (werden beim Abgleichen hochgeladen).') : null,
+        h('button', { class: 'btn sec', onclick: async () => { const n = await cleanFotos(); toast(n ? n + ' Fotos vom Gerät entfernt (liegen in Drive, Vorschau bleibt)' : 'Nichts aufzuräumen'); } }, 'Fotos vom Gerät aufräumen (nur schon hochgeladene)'),
         h('button', { class: 'btn sec', onclick: async () => {
           await saveBooking({ id: 'muster-1211', name: 'Max Mustermann (Muster)', telefon: '0163 0000000', email: 'e-post-mueller@outlook.de', adresse: 'Musterweg 1, 44575 Castrop-Rauxel',
             start: '2026-12-11', ende: '2026-12-11', abholzeit: '10:00', rueckzeit: '21:00', status: 'bestaetigt', preis: 50, anzahlung: 10, kaution: 100, kautionStatus: 'offen',
@@ -1041,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 64')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 65')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1427,7 +1431,7 @@
     return h('div', { class: 'ov', id: 'pickupov' }, h('div', { class: 'ovin' },
       h('div', { class: 'ovtop' }, h('h2', {}, 'Abholung'), h('button', { class: 'btn sec', onclick: closePickup }, 'Schließen')),
       sm ? h('div', { class: 'warnbox err2' }, '🚫 Gesperrter Kunde' + (sm.grund ? ' – ' + sm.grund : '')) : null,
-      slip, due, acts, h('div', { style: 'height:10px' }), list, info));
+      slip, due, acts, h('div', { style: 'height:10px' }), list, fotoSection(b), info));
   }
 
   // --- Mietvertrag (PDF-Vorlage im Browser ausfüllen, funktioniert offline) ---
@@ -1525,6 +1529,7 @@
       p2.drawImage(img, { x: x0, y: H - 598 + 1, width: iw, height: ih });
     };
     if (sig) { await putSig(sig.mieter, 128, 144); await putSig(sig.vermieter, 376, 149); }
+    if (b.fotosPdf) { try { await appendPhotoPages(PL, doc, font, b); } catch (e) { console.error(e); } }
     return await doc.save();
   }
   async function deliverPdf(bytes, name) {
@@ -1786,6 +1791,10 @@
       h('div', { class: 'tnone' }, (b.name || '') + ' · ' + fmtShort(b.start) + (b.ende !== b.start ? ' – ' + fmtShort(b.ende) : '') + '. Bitte Vertrag lesen, dann unten unterschreiben.'),
       pages,
       extraBox, payBox,
+      (b.fotos || []).some((f) => f.ph === 'ab') ? h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: b.fotosPdf ? '' : null, onchange: async (ev) => {
+        const p = { fotosPdf: ev.target.checked }; try { await patchBooking(b, p); } catch (e) { /* egal */ } b = Object.assign({}, b, p);
+        try { const base = await buildContract(b, pos, null); await renderPages(base, pages); } catch (e) { /* Vorschau egal */ }
+      } }), h('span', {}, 'Fotos ins PDF (Abholungsfotos als Anhang)')) : null,
       h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Unterschrift Mieter'), pM.el, h('button', { class: 'btn sec sm', onclick: () => pM.clear() }, 'Löschen')),
       h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Unterschrift Vermieter'), mineRow, pV.el, h('button', { class: 'btn sec sm', onclick: () => { pV.clear(); useMine = false; const c = ov.querySelector('.calrow input'); if (c) c.checked = false; } }, 'Löschen')),
       status, h('div', { class: 'stack' }, doneBtn)));
@@ -1795,6 +1804,165 @@
   }
 
   const MAILSUBJ = 'Ihr Mietvertrag – Müllers MietXpress';
+
+  // --- Zustandsfotos (Abholung / Rückgabe) ---
+  const FOTO_DEF = /Hüpfburg|Popcorn|Slush|Zuckerwatte|Crêpes|Schnee|Nebel|Aperol|kukki|PartyBox|DJ & Party|LED Licht|Kühl/i;
+  const fotoOn = (a) => !!a && (a.foto == null ? FOTO_DEF.test(a.name) : !!a.foto);
+  const fotoArts = (b) => Avail.positionsOf(b, state.arts).map((p) => p.artikel).filter((n, i, arr) => arr.indexOf(n) === i)
+    .filter((n) => fotoOn(state.arts.find((a) => a.name === n)));
+  const THC = {};
+  const phName = (ph) => ph === 'ab' ? 'Abholung' : 'Rückgabe';
+  const stampOf = (ts) => { const d = new Date(ts); return fmtDE(iso(d)) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  const blobBytes = (bl) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(new Uint8Array(fr.result)); fr.onerror = rej; fr.readAsArrayBuffer(bl); });
+  const fotoPending = () => state.bookings.reduce((n, b) => n + (b.fotos || []).filter((f) => !f.drive).length, 0);
+
+  // Foto verkleinern (lange Kante 1600 px), Datum/Uhrzeit/Artikel einstempeln, kleine Vorschau erzeugen
+  async function procPhoto(file, label) {
+    let bmp;
+    if (typeof createImageBitmap === 'function') bmp = await createImageBitmap(file);
+    else bmp = await new Promise((res, rej) => { const im = new Image(), u = URL.createObjectURL(file); im.onload = () => res(im); im.onerror = rej; im.src = u; });
+    const W = bmp.width || bmp.naturalWidth, Hh = bmp.height || bmp.naturalHeight, sc = Math.min(1, 1600 / Math.max(W, Hh));
+    const cv = document.createElement('canvas'); cv.width = Math.round(W * sc); cv.height = Math.round(Hh * sc);
+    const cx = cv.getContext('2d');
+    if (cx) {
+      cx.drawImage(bmp, 0, 0, cv.width, cv.height);
+      const fs = Math.max(14, Math.round(cv.width / 42)); cx.font = '600 ' + fs + 'px sans-serif';
+      const tw = Math.min(cv.width, cx.measureText(label).width + fs);
+      cx.fillStyle = 'rgba(0,0,0,0.62)'; cx.fillRect(0, cv.height - fs * 1.9, tw, fs * 1.9);
+      cx.fillStyle = '#fff'; cx.textBaseline = 'middle'; cx.fillText(label, fs / 2, cv.height - fs * 0.95);
+    }
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.72));
+    const tc = document.createElement('canvas'), ts2 = Math.min(1, 240 / Math.max(cv.width, cv.height));
+    tc.width = Math.max(1, Math.round(cv.width * ts2)); tc.height = Math.max(1, Math.round(cv.height * ts2));
+    const tx = tc.getContext('2d'); if (tx) tx.drawImage(cv, 0, 0, tc.width, tc.height);
+    return { blob, th: tc.toDataURL('image/jpeg', 0.6) };
+  }
+  async function addPhotos(b, art, ph, files) {
+    for (const f of files) {
+      const ts = nowIso();
+      const p = await procPhoto(f, stampOf(ts) + ' · ' + art + ' · ' + phName(ph));
+      if (!p.blob) throw new Error('foto');
+      const id = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      await DB.setMeta('foto:' + id, { b64: toB64(await blobBytes(p.blob)) });
+      await DB.setMeta('fth:' + id, p.th); THC[id] = p.th;
+      const cur = state.bookings.find((x) => x.id === b.id) || b;
+      await patchBooking(cur, { fotos: (cur.fotos || []).concat([{ id, art, ph, ts, drive: '' }]) });
+    }
+    flushFotos().catch(() => {});
+  }
+  const fotoFolderName = (b) => {
+    const last = splitName(b.name).split(',')[0].replace(/[^A-Za-z0-9ÄÖÜäöüß-]+/g, '') || 'Kunde', d = parse(b.start);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '_' + last;
+  };
+  const fotoFileName = (f) => {
+    const d = new Date(f.ts);
+    return String(f.art).replace(/[\/\\:*?"<>|]+/g, '-') + '_' + phName(f.ph) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '_' + String(f.id).slice(-3) + '.jpg';
+  };
+  let fotoBusy = false;
+  async function flushFotos() {
+    if (fotoBusy || !navigator.onLine || !GCAL.isSignedIn()) return 0;
+    fotoBusy = true; let n = 0; const fc = {};
+    try {
+      for (const b0 of state.bookings.slice()) {
+        for (const f of (b0.fotos || [])) {
+          if (f.drive) continue;
+          const rec = await DB.getMeta('foto:' + f.id); if (!rec) continue;
+          try {
+            const key = b0.id;
+            if (!fc[key]) {
+              const root = await GDRIVE.ensureFolder('Zustandsfotos', 'root'), yr = await GDRIVE.ensureFolder(String(parse(b0.start).getFullYear()), root);
+              fc[key] = await GDRIVE.ensureFolder(fotoFolderName(b0), yr);
+            }
+            const id = await GDRIVE.uploadFile(new Blob([fromB64(rec.b64)], { type: 'image/jpeg' }), fotoFileName(f), fc[key], 'image/jpeg');
+            const cur = state.bookings.find((x) => x.id === b0.id);
+            if (cur) await patchBooking(cur, { fotos: (cur.fotos || []).map((x) => x.id === f.id ? Object.assign({}, x, { drive: id }) : x) });
+            n++;
+          } catch (e) { /* beim nächsten Netz nochmal */ }
+        }
+      }
+    } finally { fotoBusy = false; }
+    return n;
+  }
+  // Vom Gerät entfernen: nur schon hochgeladene Originale (Vorschaubilder bleiben)
+  async function cleanFotos() {
+    let n = 0;
+    for (const b of state.bookings) for (const f of (b.fotos || [])) {
+      if (!f.drive) continue;
+      if (await DB.getMeta('foto:' + f.id)) { await DB.delMeta('foto:' + f.id); n++; }
+    }
+    return n;
+  }
+  async function appendPhotoPages(PL, doc, font, b) {
+    const items = [];
+    for (const f of (b.fotos || []).filter((x) => x.ph === 'ab')) { const rec = await DB.getMeta('foto:' + f.id); if (rec) items.push({ f, bytes: fromB64(rec.b64) }); }
+    if (!items.length) return;
+    const W = 595.28, Hh = 841.89, cw = 240, ch = 190, gx = (W - 2 * cw) / 3; let page = null, pos = 0;
+    for (const it of items) {
+      if (!page || pos >= 6) {
+        page = doc.addPage([W, Hh]); pos = 0;
+        page.drawText(safeTxt('Zustandsfotos bei der Abholung – ' + (b.name || '') + ' · ' + fmtDE(b.start)), { x: 40, y: Hh - 44, size: 11, font });
+      }
+      const img = await doc.embedJpg(it.bytes), sc = Math.min(cw / img.width, ch / img.height), w = img.width * sc, h2 = img.height * sc;
+      const x = gx + (pos % 2) * (cw + gx), yTop = Hh - 70 - Math.floor(pos / 2) * (ch + 60);
+      page.drawImage(img, { x, y: yTop - h2, width: w, height: h2 });
+      page.drawText(safeTxt(it.f.art + ' · ' + stampOf(it.f.ts)), { x, y: yTop - ch - 14, size: 8, font });
+      pos++;
+    }
+  }
+  function thumbImg(f) {
+    const img = h('img', { alt: '' });
+    if (THC[f.id]) img.src = THC[f.id];
+    else DB.getMeta('fth:' + f.id).then((v) => { if (v) { THC[f.id] = v; img.src = v; } }).catch(() => {});
+    return img;
+  }
+  async function openFoto(bid, fid) {
+    const old = document.getElementById('fotoov'); if (old) old.remove();
+    const b = state.bookings.find((x) => x.id === bid), f = b && (b.fotos || []).find((x) => x.id === fid); if (!f) return;
+    let url = null;
+    const close = () => { const o = document.getElementById('fotoov'); if (o) o.remove(); if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* egal */ } } };
+    const img = h('img', { class: 'fbig', alt: '' });
+    const info = h('div', { class: 'tnone' }, f.art + ' · ' + phName(f.ph) + ' · ' + stampOf(f.ts) + (f.drive ? ' · in Drive ✓' : ' · noch nicht in Drive'));
+    const del = h('button', { class: 'btn sec', onclick: async () => {
+      if (!window.confirm('Dieses Foto wirklich löschen?')) return;
+      const cur = state.bookings.find((x) => x.id === bid); if (!cur) return;
+      await patchBooking(cur, { fotos: (cur.fotos || []).filter((x) => x.id !== fid) });
+      try { await DB.delMeta('foto:' + fid); await DB.delMeta('fth:' + fid); } catch (e) { /* egal */ }
+      if (f.drive && navigator.onLine && GCAL.isSignedIn()) { try { await GCAL.authFetch('https://www.googleapis.com/drive/v3/files/' + f.drive, { method: 'DELETE' }); } catch (e) { /* Drive-Datei bleibt */ } }
+      close(); toast('Foto gelöscht');
+    } }, 'Foto löschen');
+    document.body.append(h('div', { class: 'ov signov', id: 'fotoov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Zustandsfoto'), h('button', { class: 'btn sec', onclick: close }, 'Schließen')),
+      info, img, h('div', { class: 'stack' }, del))));
+    const rec = await DB.getMeta('foto:' + fid);
+    if (rec) { url = URL.createObjectURL(new Blob([fromB64(rec.b64)], { type: 'image/jpeg' })); img.src = url; }
+    else if (f.drive && navigator.onLine && GCAL.isSignedIn()) {
+      info.append(' · lade aus Drive …');
+      try { const r = await GCAL.authFetch('https://www.googleapis.com/drive/v3/files/' + f.drive + '?alt=media'); url = URL.createObjectURL(await r.blob()); img.src = url; }
+      catch (e) { info.append(' (Laden nicht möglich)'); }
+    } else info.append(' · Original liegt in Drive (zum Ansehen online sein)');
+  }
+  function fotoSection(b) {
+    const arts = fotoArts(b); if (!arts.length) return null;
+    const fl = b.fotos || [], pend = fl.filter((f) => !f.drive).length;
+    const area = (art, ph) => {
+      const inp = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: 'display:none' });
+      inp.addEventListener('change', async () => {
+        const files = [...inp.files]; inp.value = ''; if (!files.length) return;
+        toast('Foto wird gespeichert …');
+        try { await addPhotos(b, art, ph, files); toast('Foto gespeichert'); } catch (e) { console.error(e); toast('Foto konnte nicht gespeichert werden'); }
+      });
+      const mine = fl.filter((f) => f.art === art && f.ph === ph);
+      return h('div', { class: 'frow' }, h('span', { class: 'flab' }, phName(ph)),
+        h('div', { class: 'fth' }, mine.map((f) => h('button', { class: 'fthumb', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳'))),
+          inp, h('button', { class: 'btn sec sm', onclick: () => inp.click() }, '📷 Foto')));
+    };
+    return h('div', { class: 'slip pad fotobox' }, h('div', { class: 'ct' }, '📷 Zustandsfotos'),
+      h('div', { class: 'tnone' }, 'Freiwillig. Nur die Mietgegenstände fotografieren, keine Personen und keine Ausweise.'),
+      arts.map((a) => h('div', { class: 'fart' }, h('b', {}, a), area(a, 'ab'), area(a, 'rueck'))),
+      pend ? h('div', { class: 'warnbox', style: 'margin-top:8px' }, '⏳ ' + pend + (pend === 1 ? ' Foto ist' : ' Fotos sind') + ' noch nicht in Drive und werden beim nächsten Netz hochgeladen.',
+        h('button', { class: 'btn sec sm', style: 'margin-left:8px', onclick: async () => { const n = await flushFotos(); toast(n ? n + ' hochgeladen' : 'Noch nicht möglich (Netz / Google-Anmeldung)'); } }, 'Jetzt hochladen')) : null,
+      fl.some((f) => f.ph === 'ab') ? h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: b.fotosPdf ? '' : null, onchange: (ev) => { patchBooking(b, { fotosPdf: ev.target.checked }); } }), h('span', {}, 'Abholungsfotos an den Mietvertrag (PDF) anhängen')) : null);
+  }
 
   // --- Statistik ---
   function stats() {
@@ -1894,6 +2062,9 @@
     const groups = cats.map((c) => h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, c),
       byCat[c].map((a) => h('div', { class: 'r' },
         h('span', { style: 'flex:1;min-width:0;word-break:break-word' }, a.name),
+        h('label', { class: 'fotosw', title: 'Zustandsfoto bei Abholung/Rückgabe' }, h('input', { type: 'checkbox', checked: fotoOn(a) ? '' : null, onchange: async (ev) => {
+          await saveArts(state.arts.map((x) => (x.id === a.id ? Object.assign({}, x, { foto: ev.target.checked }) : x))); toast(ev.target.checked ? 'Zustandsfoto an' : 'Zustandsfoto aus');
+        } }), '📷'),
         h('input', { type: 'number', min: '0', value: a.menge == null ? 0 : a.menge, class: 'inp bestandN', onchange: async (ev) => {
           const n = parseInt(ev.target.value, 10); if (isNaN(n) || n < 0) return;
           await saveArts(state.arts.map((x) => (x.id === a.id ? Object.assign({}, x, { menge: n }) : x))); toast('Gespeichert');
@@ -1904,7 +2075,7 @@
     const mI = h('input', { class: 'inp', type: 'number', min: '0', value: '1', placeholder: 'Menge' });
     return h('div', { class: 'ov', id: 'bestandov' }, h('div', { class: 'ovin' },
       h('div', { class: 'ovtop' }, h('h2', {}, 'Bestand bearbeiten'), h('button', { class: 'btn', onclick: () => { state.bestandOpen = false; render(); } }, 'Fertig')),
-      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, 'Anzahl je Artikel ändern, wird direkt gespeichert und beim Abgleichen nach Drive übertragen.'),
+      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, 'Anzahl je Artikel ändern, wird direkt gespeichert und beim Abgleichen nach Drive übertragen. Haken 📷 = bei diesem Artikel gibt es Zustandsfotos (Abholung/Rückgabe).'),
       groups.length ? groups : h('div', { class: 'empty' }, 'Keine Artikel hinterlegt.'),
       h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, 'Artikel hinzufügen'),
         h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, nameI, catS, mI, h('button', { class: 'btn', onclick: async () => {

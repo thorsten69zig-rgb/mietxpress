@@ -52,6 +52,7 @@ const DB = (function () {
       const r = await run('meta', 'readonly', (s) => s.get(key));
       return r ? r.value : null;
     },
-    setMeta: (key, value) => run('meta', 'readwrite', (s) => s.put({ key, value }))
+    setMeta: (key, value) => run('meta', 'readwrite', (s) => s.put({ key, value })),
+    delMeta: (key) => run('meta', 'readwrite', (s) => s.delete(key))
   };
 })();

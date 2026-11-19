@@ -569,3 +569,15 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .signov .sigbox{width:64%;max-width:620px;margin:6px auto 8px}
 .signov .sgroup{text-align:center}
 .signov .sgroup .slabel,.signov .sgroup .calrow{text-align:left;width:64%;max-width:620px;margin-left:auto;margin-right:auto}
+/* v65: Zustandsfotos */
+.fotobox .fart{padding:10px 0;border-top:1px solid #e4e7f0}
+.fotobox .fart>b{font-size:17px}
+.fotobox .frow{display:flex;align-items:center;gap:10px;margin-top:8px}
+.fotobox .flab{flex:0 0 86px;font-size:14px;color:#6b7390}
+.fotobox .fth{display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0}
+.fthumb{position:relative;width:64px;height:64px;padding:0;border:1px solid #cfd5e6;border-radius:8px;overflow:hidden;background:#eef1f8}
+.fthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.fthumb i{position:absolute;right:2px;bottom:2px;font-style:normal;font-size:12px;background:#fff;border-radius:6px;padding:0 3px}
+.fbig{width:100%;height:auto;border-radius:8px;margin:10px 0;background:#eef1f8;min-height:120px}
+.fotosw{display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:18px}
+.fotosw input{width:22px;height:22px}
