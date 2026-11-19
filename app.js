@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 75')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 76')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1757,7 +1757,7 @@
           await GDRIVE.uploadPdf(new Blob([bytes], { type: 'application/pdf' }), name, bf); drive = 'ok';
         } else await queueContract(name, year, bytes, fotoFolderName(b));
       } catch (e) { try { await queueContract(name, year, bytes, fotoFolderName(b)); } catch (x) { drive = 'fehler'; } }
-      try { await patchBooking(b, { vertrag: 'unterschrieben', vertragAt: nowIso() }); b = Object.assign({}, b, { vertrag: 'unterschrieben' }); } catch (e) { /* Vertrag trotzdem gültig */ }
+      try { const upd = { vertrag: 'unterschrieben', vertragAt: nowIso() }; if (b.status === 'bestaetigt' || b.status === 'angefragt') { upd.status = 'abgeholt'; upd.statusVorher = b.status; } await patchBooking(b, upd); b = Object.assign({}, b, upd); } catch (e) { /* Vertrag trotzdem gültig */ }
       const res = document.getElementById('signov'); if (!res) return;
       const pv = h('div', { class: 'spages' });
       res.replaceChildren(h('div', { class: 'ovin' },
