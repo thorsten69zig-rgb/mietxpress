@@ -86,7 +86,7 @@
     const artText = b.artikel || (pos && pos.length
       ? pos.map((p) => (Number(p.anzahl) > 1 ? p.anzahl + '× ' : '') + p.artikel).join(', ') : '');
     return Object.assign({}, b, {
-      id: String(b.id), name: b.name || '', adresse: b.adresse || '', telefon: b.telefon || '',
+      id: String(b.id), name: b.name || '', adresse: b.adresse || '', telefon: b.telefon || '', email: b.email || '',
       plattform: b.plattform || '', artikel: artText, positionen: pos,
       start: start, ende: b.ende || start, zeit: b.zeit || '',
       abholzeit: b.abholzeit || '', rueckzeit: b.rueckzeit || '', erstellt: b.erstellt || '',
@@ -547,6 +547,7 @@
         state.open['m' + b.id] ? h('div', { class: 'det' },
           sp ? h('div', {}, '🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : '')) : null,
           b.telefon ? h('div', {}, h('span', {}, 'Telefon: '), h('a', { href: 'tel:' + b.telefon.replace(/\s+/g, '') }, b.telefon)) : null,
+          b.email ? h('div', {}, h('span', {}, 'E-Mail: '), h('a', { href: 'mailto:' + b.email }, b.email)) : null,
           b.notiz ? h('div', { class: 'note' }, b.notiz) : null,
           actions(b)) : null,
         fm ? h('button', { class: 'runclose', style: 'margin-top:8px', onclick: () => { state.open['z' + b.id] = false; render(); } }, '▴ Einklappen') : null));
@@ -903,7 +904,7 @@
       const list = state.bookings.filter((b) => {
         if (state.filter === 'anstehend' && !(isOpenBooking(b) && (b.ende >= ts || b.status === 'abgeholt'))) return false;
         if (state.filter === 'erledigt' && isOpenBooking(b)) return false;
-        if (q && (b.name + ' ' + b.artikel + ' ' + b.telefon + ' ' + b.adresse + ' ' + b.notiz).toLowerCase().indexOf(q) < 0) return false;
+        if (q && (b.name + ' ' + b.artikel + ' ' + b.telefon + ' ' + (b.email || '') + ' ' + b.adresse + ' ' + b.notiz).toLowerCase().indexOf(q) < 0) return false;
         return true;
       });
       list.sort(state.filter === 'anstehend' ? sortByStart : (a, b) => sortByStart(b, a));
@@ -1030,7 +1031,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 52')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 53')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1118,7 +1119,7 @@
   function openEdit(b) {
     const base = iso(today0());
     const d = b ? JSON.parse(JSON.stringify(b)) : {
-      id: null, name: '', telefon: '', adresse: '', plattform: 'Sonstige',
+      id: null, name: '', telefon: '', email: '', adresse: '', plattform: 'Sonstige',
       start: state.sel || base, ende: state.sel || base, abholzeit: '10:00', rueckzeit: '21:00',
       positionen: [], preis: 0, anzahlung: 0, kaution: 0, kautionStatus: 'keine',
       status: 'bestaetigt', notiz: '', erstellt: base
@@ -1222,7 +1223,7 @@
     const w = editWarnings(d);
     if (w.length && !confirm('Achtung:\n' + w.join('\n') + '\n\nTrotzdem speichern?')) return;
     const b = Object.assign({}, d, {
-      id: d.id || newId(), name: String(d.name).trim(), telefon: String(d.telefon).trim(), adresse: String(d.adresse || '').trim(),
+      id: d.id || newId(), name: String(d.name).trim(), telefon: String(d.telefon).trim(), email: String(d.email || '').trim(), adresse: String(d.adresse || '').trim(),
       preis: toNum(d.preis), anzahlung: toNum(d.anzahlung), kaution: toNum(d.kaution),
       artikel: d.positionen.length ? '' : String(d.artikel || '').trim(),
       positionen: d.positionen.length ? d.positionen.map((p) => ({ artikel: p.artikel, anzahl: Number(p.anzahl) || 1 })) : null,
@@ -1312,6 +1313,7 @@
       h('div', { class: 'box' },
         fld('Name', txt('name', { autocomplete: 'off' })),
         fld('Telefon', txt('telefon', { type: 'tel', inputmode: 'tel' })),
+        fld('E-Mail', txt('email', { type: 'email', inputmode: 'email', autocomplete: 'off', autocapitalize: 'off' })),
         fld('Adresse', txt('adresse')),
         fld('Quelle', sel('plattform', plats.map((x) => [x, x]))),
         (() => { const st = h('div', { class: 'autohint' }); return h('div', {}, shotButton(() => iso8(d.start) + '-' + slug(d.name), st), st); })()),
@@ -1388,6 +1390,7 @@
     const info = h('div', { class: 'slip' },
       row('Rückgabe', fmtShort(b.ende) + ' · ' + (b.rueckzeit ? b.rueckzeit + ' Uhr' : 'Zeit offen') + ' (' + n + (n === 1 ? ' Tag' : ' Tage') + ')'),
       b.telefon ? row('Telefon', b.telefon) : null,
+      b.email ? row('E-Mail', b.email) : null,
       b.adresse ? row('Adresse', b.adresse) : null,
       b.notiz ? row('Notiz', b.notiz) : null);
     const chk = (key, label) => {
@@ -1417,7 +1420,7 @@
   }
 
   // --- Mietvertrag (PDF-Vorlage im Browser ausfüllen, funktioniert offline) ---
-  const BOXROWS = [437.5, 468.9, 500.4, 531.8, 563.3, 594.7, 626.2, 657.6, 698.3, 729.7];
+  const BOXROWS = [461.7, 493.1, 524.6, 556.0, 587.5, 618.9, 650.4, 681.8, 722.5, 753.9];
   const BOXCOLX = { L: 52.6, R: 293.6 };
   const BOXMAP = {
     'Hüpfburg Schloss': ['L', 0], 'Hüpfburg Slide': ['L', 1], 'Hüpfburg Space': ['L', 2], 'Hüpfburg Kleines Schloss': ['L', 3],
@@ -1470,18 +1473,19 @@
     T(p1, 142, 285.2, ad.strasse);
     T(p1, 142, 309.4, ad.plz);
     T(p1, 142, 333.6, b.telefon);
-    T(p1, 47, 395.6, fmtDE(b.start));
-    T(p1, 166, 395.6, fmtDE(b.ende));
-    T(p1, 286, 395.6, uhr, 9);
-    T(p1, 401, 395.6, 'Selbstabholung', 9);
+    T(p1, 142, 357.8, b.email);
+    T(p1, 47, 419.8, fmtDE(b.start));
+    T(p1, 166, 419.8, fmtDE(b.ende));
+    T(p1, 286, 419.8, uhr, 9);
+    T(p1, 401, 419.8, 'Selbstabholung', 9);
     positions.forEach((pos) => {
       const m = BOXMAP[pos.artikel]; if (!m) return;
       const n = Number(pos.anzahl) || 1, cx = BOXCOLX[m[0]] + 6.8, cy = BOXROWS[m[1]] + 5.3, sz = 4.2;
       p1.drawLine({ start: { x: cx - sz, y: H - (cy - sz) }, end: { x: cx + sz, y: H - (cy + sz) }, thickness: 1.6, color: ink });
       p1.drawLine({ start: { x: cx - sz, y: H - (cy + sz) }, end: { x: cx + sz, y: H - (cy - sz) }, thickness: 1.6, color: ink });
-      if (pos.artikel === 'Stehtisch') T(p1, 343, 587.0, n, 9);
-      if (pos.artikel === 'Speisewärmer Eat') T(p1, 343, 524.0, n, 9);
-      if (pos.artikel === 'Bierzeltgarnitur') { T(p1, 369, 618.4, n, 9); T(p1, 442, 618.4, n * 2, 9); }
+      if (pos.artikel === 'Stehtisch') T(p1, 343, 611.2, n, 9);
+      if (pos.artikel === 'Speisewärmer Eat') T(p1, 343, 548.2, n, 9);
+      if (pos.artikel === 'Bierzeltgarnitur') { T(p1, 369, 642.6, n, 9); T(p1, 442, 642.6, n * 2, 9); }
     });
     // Zusätzliche Leistungen / Pakete (Tabelle Seite 2, Zeilen ab 160 pt, Höhe 23,6 pt)
     const exRe = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
@@ -2082,7 +2086,7 @@
       const hit = (txt) => { const t = norm(txt); return words.every((w) => t.indexOf(w) > -1); };
       const items = [];
       state.bookings.forEach((b) => {
-        if (hit([b.name, b.artikel, b.telefon, b.adresse, b.notiz, b.plattform, STATUS[b.status]].join(' ')))
+        if (hit([b.name, b.artikel, b.telefon, b.email, b.adresse, b.notiz, b.plattform, STATUS[b.status]].join(' ')))
           items.push({ d: b.start, e: b.ende || b.start, t: (b.artikel || '(ohne Artikel)') + ' · ' + (b.name || '(ohne Name)'), s: 'Buchung · ' + (STATUS[b.status] || b.status) + (b.adresse ? ' · ' + b.adresse : ''), k: 'b', b, c: bookCatColor(b) });
       });
       const mirrored = (ev) => state.bookings.some((b) => b.gcalEventId && (b.gcalEventId === ev.id || String(ev.id).endsWith(':' + b.gcalEventId) || String(b.gcalEventId).endsWith(':' + ev.id)));
