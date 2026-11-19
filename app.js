@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 65')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 66')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1806,8 +1806,7 @@
   const MAILSUBJ = 'Ihr Mietvertrag – Müllers MietXpress';
 
   // --- Zustandsfotos (Abholung / Rückgabe) ---
-  const FOTO_DEF = /Hüpfburg|Popcorn|Slush|Zuckerwatte|Crêpes|Schnee|Nebel|Aperol|kukki|PartyBox|DJ & Party|LED Licht|Kühl/i;
-  const fotoOn = (a) => !!a && (a.foto == null ? FOTO_DEF.test(a.name) : !!a.foto);
+  const fotoOn = (a) => !!a && (a.foto == null ? true : !!a.foto);
   const fotoArts = (b) => Avail.positionsOf(b, state.arts).map((p) => p.artikel).filter((n, i, arr) => arr.indexOf(n) === i)
     .filter((n) => fotoOn(state.arts.find((a) => a.name === n)));
   const THC = {};
@@ -2075,7 +2074,7 @@
     const mI = h('input', { class: 'inp', type: 'number', min: '0', value: '1', placeholder: 'Menge' });
     return h('div', { class: 'ov', id: 'bestandov' }, h('div', { class: 'ovin' },
       h('div', { class: 'ovtop' }, h('h2', {}, 'Bestand bearbeiten'), h('button', { class: 'btn', onclick: () => { state.bestandOpen = false; render(); } }, 'Fertig')),
-      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, 'Anzahl je Artikel ändern, wird direkt gespeichert und beim Abgleichen nach Drive übertragen. Haken 📷 = bei diesem Artikel gibt es Zustandsfotos (Abholung/Rückgabe).'),
+      h('div', { class: 'pextra', style: 'margin:0 0 10px;font-size:13.5px' }, 'Anzahl je Artikel ändern, wird direkt gespeichert und beim Abgleichen nach Drive übertragen. Haken 📷 = bei diesem Artikel gibt es Zustandsfotos (Abholung/Rückgabe); Haken entfernen = kein Foto-Bereich.'),
       groups.length ? groups : h('div', { class: 'empty' }, 'Keine Artikel hinterlegt.'),
       h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, 'Artikel hinzufügen'),
         h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, nameI, catS, mI, h('button', { class: 'btn', onclick: async () => {
