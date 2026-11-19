@@ -1041,7 +1041,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 63')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 64')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1766,7 +1766,6 @@
         h('div', { class: 'warnbox okbox' }, drive === 'ok' ? '✓ In Drive abgelegt: Mietverträge/' + year + '/' + name : drive === 'wartet' ? 'Kein Netz oder nicht bei Google angemeldet: Der Vertrag ist auf diesem Gerät gemerkt und wird beim nächsten Abgleich hochgeladen.' : '⚠ Ablage im Drive nicht möglich. Bitte jetzt teilen und speichern.'),
         payView(b),
         h('div', { class: 'stack' },
-          h('button', { class: 'btn', onclick: async () => { const r = await deliverPdf(bytes, name); if (r === 'download') toast('PDF gespeichert'); } }, 'Teilen / Drucken (AirDrop, Mail, Nachrichten)'),
           b.email ? h('button', { class: 'btn', onclick: async () => {
             try { if (navigator.clipboard) await navigator.clipboard.writeText(b.email); } catch (e) { /* egal */ }
             toast('Adresse kopiert – im Feld „An“ einfügen. Betreff: ' + MAILSUBJ);
@@ -1776,9 +1775,9 @@
             else await deliverPdf(bytes, name);
           } }, '📧 Per E-Mail senden an ' + b.email) : null,
           b.email ? h('button', { class: 'btn sec', onclick: async () => { try { await navigator.clipboard.writeText(MAILSUBJ); toast('Betreff kopiert – im Feld „Betreff“ einfügen'); } catch (e) { toast('Betreff: ' + MAILSUBJ); } } }, 'Betreff kopieren') : null,
-          h('button', { class: 'btn sec', onclick: () => printPdf(bytes) }, 'Direkt drucken (AirPrint)'),
+          h('button', { class: b.email ? 'btn sec' : 'btn', onclick: async () => { const r = await deliverPdf(bytes, name); if (r === 'download') toast('PDF gespeichert'); } }, 'Teilen / Drucken (AirDrop, Nachrichten)'),
           h('button', { class: 'btn sec', onclick: close }, 'Fertig, ohne Kopie')),
-        h('div', { class: 'tnone' }, 'Tipp: Fragt der Kunde nach einer Kopie, im Teilen-Menü AirDrop, Mail, Nachrichten oder Drucken wählen.'),
+        h('div', { class: 'tnone' }, 'Tipp: Fragt der Kunde nach einer Kopie, per E-Mail senden oder im Teilen-Menü AirDrop, Nachrichten oder Drucken wählen.'),
         pv));
       renderPages(bytes, pv, 2);
     };
