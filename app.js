@@ -1041,7 +1041,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 59')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 60')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1769,12 +1769,13 @@
           h('button', { class: 'btn', onclick: async () => { const r = await deliverPdf(bytes, name); if (r === 'download') toast('PDF gespeichert'); } }, 'Teilen / Drucken (AirDrop, Mail, Nachrichten)'),
           b.email ? h('button', { class: 'btn', onclick: async () => {
             try { if (navigator.clipboard) await navigator.clipboard.writeText(b.email); } catch (e) { /* egal */ }
-            toast('Adresse kopiert: ' + b.email + ' – im Feld „An“ einfügen');
+            toast('Adresse kopiert – im Feld „An“ einfügen. Betreff: ' + MAILSUBJ);
             const file = new File([bytes], name, { type: 'application/pdf' });
             const text = 'Guten Tag' + (b.name ? ' ' + b.name : '') + ',\n\nanbei erhalten Sie Ihren unterschriebenen Mietvertrag für den ' + fmtDE(b.start) + (b.ende !== b.start ? ' – ' + fmtDE(b.ende) : '') + '.\n\nVielen Dank für Ihre Buchung!\n\nFreundliche Grüße\nThorsten Müller\nMüllers MietXpress\n0163 3865144';
-            if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'Ihr Mietvertrag – Müllers MietXpress', text }); } catch (e) { /* abgebrochen */ } }
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: MAILSUBJ, text }); } catch (e) { /* abgebrochen */ } }
             else await deliverPdf(bytes, name);
           } }, '📧 Per E-Mail senden an ' + b.email) : null,
+          b.email ? h('button', { class: 'btn sec', onclick: async () => { try { await navigator.clipboard.writeText(MAILSUBJ); toast('Betreff kopiert – im Feld „Betreff“ einfügen'); } catch (e) { toast('Betreff: ' + MAILSUBJ); } } }, 'Betreff kopieren') : null,
           h('button', { class: 'btn sec', onclick: () => printPdf(bytes) }, 'Direkt drucken (AirPrint)'),
           h('button', { class: 'btn sec', onclick: close }, 'Fertig, ohne Kopie')),
         h('div', { class: 'tnone' }, 'Tipp: Fragt der Kunde nach einer Kopie, im Teilen-Menü AirDrop, Mail, Nachrichten oder Drucken wählen.'),
@@ -1793,6 +1794,8 @@
     if (mine) setTimeout(() => pV.setImage(mine), 40);
     try { const base = await buildContract(b, pos, null); await renderPages(base, pages); } catch (e) { pages.replaceChildren(h('div', { class: 'tnone' }, 'Vertrag konnte nicht angezeigt werden.')); }
   }
+
+  const MAILSUBJ = 'Ihr Mietvertrag – Müllers MietXpress';
 
   // --- Statistik ---
   function stats() {
