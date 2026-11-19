@@ -1035,7 +1035,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 57')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 58')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1712,11 +1712,30 @@
       try { await patchBooking(b, p); } catch (e) { exMsg.textContent = 'Konnte nicht gespeichert werden.'; return; }
       b = Object.assign({}, b, p); exName.value = ''; exPrice.value = '';
       exMsg.textContent = '✓ ' + nm + ' ' + eur(pr) + ' dazugebucht. Vertrag unten ist aktualisiert.';
-      payBox.replaceChildren(payView(b));
+      refreshAll();
+    };
+    const exList = h('div', {});
+    const refreshAll = async () => {
+      payBox.replaceChildren(payView(b)); paintExtras();
       try { const base = await buildContract(b, pos, null); await renderPages(base, pages); } catch (e) { /* Vorschau egal */ }
     };
+    const paintExtras = () => {
+      const re = /\+\s*Extra:\s*([^()€+\n]*?)\s*(\d+(?:[.,]\d+)?)\s*€/g, rows = []; let m;
+      while ((m = re.exec(String(b.notiz || '')))) {
+        const full = m[0], val = Number(m[2].replace(',', '.')), nm = m[1].trim();
+        rows.push(h('div', { class: 'exrow' }, h('span', {}, nm + ' · ' + eur(val)),
+          h('button', { class: 'btn sec sm', onclick: async () => {
+            const notiz = String(b.notiz || '').replace(full, '').replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').replace(/^\s+|\s+$/g, '');
+            const p = { preis: Math.max(0, Math.round(((Number(b.preis) || 0) - val) * 100) / 100), notiz };
+            try { await patchBooking(b, p); } catch (e) { exMsg.textContent = 'Konnte nicht gespeichert werden.'; return; }
+            b = Object.assign({}, b, p); exMsg.textContent = '✓ ' + nm + ' entfernt.'; refreshAll();
+          } }, '✕ Entfernen')));
+      }
+      exList.replaceChildren(...rows);
+    };
+    paintExtras();
     const extraBox = h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Spontan etwas dazu? (vor der Unterschrift)'),
-      h('div', { class: 'row2' }, exName, exPrice), h('button', { class: 'btn sec sm', onclick: addExtra }, '＋ Dazubuchen'), exMsg);
+      exList, h('div', { class: 'row2' }, exName, exPrice), h('button', { class: 'btn sec sm', onclick: addExtra }, '＋ Dazubuchen'), exMsg);
     const doneBtn = h('button', { class: 'btn', onclick: async (ev) => {
       if (pM.isEmpty()) { status.textContent = 'Bitte zuerst den Mieter unterschreiben lassen.'; return; }
       const btn = ev.currentTarget; btn.disabled = true; btn.textContent = 'Erstelle …';
