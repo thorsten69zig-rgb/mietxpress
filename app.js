@@ -1031,7 +1031,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 53')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 54')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1885,7 +1885,7 @@
       avail: 'Hallo,\nja, ' + (o.art && GEN[o.art] ? GEN[o.art] + ' ' + (DISP[o.art] || o.art) + ' wäre' : 'das wäre') + ' da noch verfügbar.\n\nMit freundlichen Grüßen\n' + sig,
       res: 'Hallo lieber Kunde,\nfür die Reservierung sende bitte 10 € per PayPal an info@muellers-mietxpress.de\nName und Mietdatum einfach im Betreff angeben.\n\nSobald die Anzahlung bei mir eingegangen ist, ist ' + fest + ' und ich schicke dir alle weiteren Infos zur Abholung.\n\nMit freundlichen Grüßen\n' + sig,
       best: 'Hallo lieber Kunde,\nvielen Dank für deine Buchung! ' +
-        (o.hasData ? '' : 'Für den Mietvertrag benötige ich noch deinen vollständigen Namen und deine Adresse. ') +
+        (o.hasData ? '' : 'Für den Mietvertrag benötige ich noch deinen vollständigen Namen, deine Adresse und deine E-Mail-Adresse. ') +
         'Hier nochmal alle Infos auf einen Blick:\n' +
         '📍 Abholadresse: Leveringhauser Str. 80, 44581 Castrop-Rauxel\n' +
         '🕐 Abholzeit: ' + (o.ab ? timeDe(o.ab) : '[UHRZEIT]') + '\n' +
@@ -1895,11 +1895,11 @@
     };
   }
   function buildMsgs(b) {
-    const hasData = !!(b.name && b.name.indexOf('(Name fehlt)') < 0 && b.adresse);
+    const hasData = !!(b.name && b.name.indexOf('(Name fehlt)') < 0 && b.adresse && b.email);
     const m = msgTexts({ d: parse(b.start), ab: b.abholzeit, hasData });
     return [
       { t: '1. Reservierung (PayPal)', x: m.res },
-      { t: '2. Bestätigung mit Infos', x: m.best, hint: hasData ? 'Name und Adresse sind schon da, deshalb ohne Nachfrage.' : 'Name oder Adresse fehlen noch, deshalb mit Nachfrage.' },
+      { t: '2. Bestätigung mit Infos', x: m.best, hint: hasData ? 'Name, Adresse und E-Mail sind schon da, deshalb ohne Nachfrage.' : 'Name, Adresse oder E-Mail fehlen noch, deshalb mit Nachfrage.' },
       { t: '3. Nur wenn kein PayPal: Überweisung', x: m.bank }
     ];
   }
@@ -1957,7 +1957,7 @@
         h('div', { style: 'margin-bottom:8px' }, sel),
         h('div', { class: 'pdates' }, h('label', {}, h('small', {}, 'Datum'), dIn),
           h('label', {}, h('small', {}, 'Abholzeit'), h('div', { style: 'display:flex;gap:6px' }, hSel, mSel))),
-        h('label', { class: 'calrow' }, known, h('span', {}, 'Name und Adresse sind schon bekannt'))),
+        h('label', { class: 'calrow' }, known, h('span', {}, 'Name, Adresse und E-Mail sind schon bekannt'))),
       mk('avail', '0. Anfrage: noch verfügbar'),
       mk('res', '1. Reservierung (PayPal)'),
       mk('best', '2. Bestätigung mit Infos', 'Ohne Datum und Zeit bleiben [DATUM] und [UHRZEIT] stehen.'),
