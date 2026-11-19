@@ -588,3 +588,5 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .fthumb.big{width:92px;height:92px}
 .fthumb.empty{border:2px dashed #b8c0d6;background:#f6f8fd;display:flex;align-items:center;justify-content:center}
 .fthumb .cam{font-size:30px}
+.fwrap{position:relative;width:92px;height:92px}
+.fdel{position:absolute;top:-8px;right:-8px;width:34px;height:34px;border-radius:50%;border:2px solid #fff;background:#d64545;color:#fff;font-size:16px;line-height:1;padding:0;box-shadow:0 1px 4px rgba(0,0,0,.3)}

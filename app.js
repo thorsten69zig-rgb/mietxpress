@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 70')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 71')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1917,6 +1917,14 @@
     else DB.getMeta('fth:' + f.id).then((v) => { if (v) { THC[f.id] = v; img.src = v; } }).catch(() => {});
     return img;
   }
+  async function deleteFoto(bid, fid) {
+    const cur = state.bookings.find((x) => x.id === bid), f = cur && (cur.fotos || []).find((x) => x.id === fid); if (!f) return false;
+    if (!window.confirm('Dieses Foto wirklich löschen?')) return false;
+    await patchBooking(cur, { fotos: (cur.fotos || []).filter((x) => x.id !== fid) });
+    try { await DB.delMeta('foto:' + fid); await DB.delMeta('fth:' + fid); } catch (e) { /* egal */ }
+    if (f.drive && navigator.onLine && GCAL.isSignedIn()) { try { await GCAL.authFetch('https://www.googleapis.com/drive/v3/files/' + f.drive, { method: 'DELETE' }); } catch (e) { /* Drive-Datei bleibt */ } }
+    return true;
+  }
   async function openFoto(bid, fid) {
     const old = document.getElementById('fotoov'); if (old) old.remove();
     const b = state.bookings.find((x) => x.id === bid), f = b && (b.fotos || []).find((x) => x.id === fid); if (!f) return;
@@ -1924,14 +1932,7 @@
     const close = () => { const o = document.getElementById('fotoov'); if (o) o.remove(); if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* egal */ } } };
     const img = h('img', { class: 'fbig', alt: '' });
     const info = h('div', { class: 'tnone' }, f.art + ' · ' + phName(f.ph) + (f.slot ? ' · ' + slotName(f.slot) : '') + ' · ' + stampOf(f.ts) + (f.drive ? ' · in Drive ✓' : ' · noch nicht in Drive'));
-    const del = h('button', { class: 'btn sec', onclick: async () => {
-      if (!window.confirm('Dieses Foto wirklich löschen?')) return;
-      const cur = state.bookings.find((x) => x.id === bid); if (!cur) return;
-      await patchBooking(cur, { fotos: (cur.fotos || []).filter((x) => x.id !== fid) });
-      try { await DB.delMeta('foto:' + fid); await DB.delMeta('fth:' + fid); } catch (e) { /* egal */ }
-      if (f.drive && navigator.onLine && GCAL.isSignedIn()) { try { await GCAL.authFetch('https://www.googleapis.com/drive/v3/files/' + f.drive, { method: 'DELETE' }); } catch (e) { /* Drive-Datei bleibt */ } }
-      close(); toast('Foto gelöscht');
-    } }, 'Foto löschen');
+    const del = h('button', { class: 'btn sec', onclick: async () => { if (await deleteFoto(bid, fid)) { close(); toast('Foto gelöscht'); } } }, 'Foto löschen');
     document.body.append(h('div', { class: 'ov signov', id: 'fotoov' }, h('div', { class: 'ovin' },
       h('div', { class: 'ovtop' }, h('h2', {}, 'Zustandsfoto'), h('button', { class: 'btn sec', onclick: close }, 'Schließen')),
       info, img, h('div', { class: 'stack' }, del))));
@@ -1950,7 +1951,7 @@
       const mine = fl.filter((f) => f.art === art && f.ph === ph);
       const tile = (k, label) => {
         const f = mine.find((x) => x.slot === k);
-        if (f) return h('div', { class: 'fslot' }, h('button', { class: 'fthumb big', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳')), h('span', {}, label));
+        if (f) return h('div', { class: 'fslot' }, h('div', { class: 'fwrap' }, h('button', { class: 'fthumb big', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳')), h('button', { class: 'fdel', 'aria-label': 'Foto löschen', onclick: async (ev) => { ev.stopPropagation(); if (await deleteFoto(b.id, f.id)) toast('Foto gelöscht'); } }, '✕')), h('span', {}, label));
         const inp = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: 'display:none' });
         inp.addEventListener('change', async () => {
           const files = [...inp.files].slice(0, 1); inp.value = ''; if (!files.length) return;
@@ -1962,7 +1963,7 @@
       const extra = mine.filter((f) => !SLOTS.some((q) => q[0] === f.slot));
       return h('div', { class: 'frow' }, h('span', { class: 'flab' }, phName(ph)),
         h('div', { class: 'fth' }, SLOTS.map((q) => tile(q[0], q[1])),
-          extra.map((f) => h('div', { class: 'fslot' }, h('button', { class: 'fthumb big', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳')), h('span', {}, 'weiteres')))));
+          extra.map((f) => h('div', { class: 'fslot' }, h('div', { class: 'fwrap' }, h('button', { class: 'fthumb big', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳')), h('button', { class: 'fdel', 'aria-label': 'Foto löschen', onclick: async (ev) => { ev.stopPropagation(); if (await deleteFoto(b.id, f.id)) toast('Foto gelöscht'); } }, '✕')), h('span', {}, 'weiteres')))));
     };
     return h('div', { class: 'slip pad fotobox' }, h('div', { class: 'ct' }, '📷 Zustandsfotos'),
       h('div', { class: 'tnone' }, 'Freiwillig, bis zu 3 Fotos je Abholung und Rückgabe: Gesamtansicht, Zubehör, Zustand. Nur die Mietgegenstände fotografieren, keine Personen und keine Ausweise.'),
@@ -2603,6 +2604,7 @@
   function render() {
     const app = document.getElementById('app');
     const y = window.scrollY;
+    const ovTop = {}; app.querySelectorAll('.ov[id]').forEach((o) => { ovTop[o.id] = o.scrollTop; });
     app.replaceChildren();
     const wrap = h('div', { class: 'wrap' + (state.schnell ? ' schnell' : '') });
     wrap.append(h('header', {},
@@ -2653,6 +2655,7 @@
     if (state.bestandOpen) app.append(viewBestandEdit());
     if (state.gev) app.append(viewGev());
     window.scrollTo(0, y);
+    app.querySelectorAll('.ov[id]').forEach((o) => { if (ovTop[o.id]) o.scrollTop = ovTop[o.id]; });
   }
 
   // ===== Start =====
