@@ -121,6 +121,30 @@ const GDRIVE = (function () {
     return (await res.json()).id;
   }
 
-  return { NAME, find, listInbox, download, create, update, merge, uploadImage };
+  // Ordner suchen oder anlegen (nur von der App angelegte Ordner sind sichtbar, genau das wollen wir)
+  async function ensureFolder(name, parentId) {
+    const q = "name='" + name.replace(/'/g, "\\'") + "' and mimeType='application/vnd.google-apps.folder' and '" + parentId + "' in parents and trashed=false";
+    const res = await check(await GCAL.authFetch(FILES + '?q=' + encodeURIComponent(q) + '&spaces=drive&pageSize=1&fields=files(id)'), 'Ordnersuche');
+    const j = await res.json();
+    if (j.files && j.files[0]) return j.files[0].id;
+    const cr = await check(await GCAL.authFetch(FILES + '?fields=id', {
+      method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
+    }), 'Ordner anlegen');
+    return (await cr.json()).id;
+  }
+
+  async function uploadPdf(blob, name, parentId) {
+    const boundary = 'mxp' + Date.now();
+    const meta = JSON.stringify({ name, mimeType: 'application/pdf', parents: [parentId] });
+    const body = new Blob(['--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
+      '\r\n--' + boundary + '\r\nContent-Type: application/pdf\r\n\r\n', blob, '\r\n--' + boundary + '--']);
+    const res = await check(await GCAL.authFetch(UPLOAD + '?uploadType=multipart&fields=id', {
+      method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body
+    }), 'PDF-Upload');
+    return (await res.json()).id;
+  }
+
+  return { NAME, find, listInbox, download, create, update, merge, uploadImage, ensureFolder, uploadPdf };
 
 })();

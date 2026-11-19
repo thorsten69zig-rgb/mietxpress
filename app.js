@@ -337,6 +337,7 @@
       d.msg = 'Abgeglichen: ' + state.bookings.length + ' Buchungen (' + st.neu + ' neu aus Drive, ' + st.aktualisiert + ' aktualisiert, ' + st.geloescht + ' gelöscht). ' +
         (!remote ? 'Drive-Datei angelegt.' : (m.upload ? 'Drive ist aktuell.' : 'Drive war schon aktuell.')) + inboxMsg + calMsg;
       state.synced = true;
+      try { const n = await flushContracts(); if (n) d.msg += ' ' + n + (n === 1 ? ' Mietvertrag' : ' Mietverträge') + ' in Drive abgelegt.'; } catch (e) { /* später nochmal */ }
     } catch (e) { d.err = auto === true ? null : (e.message || 'Fehler beim Abgleichen'); }
     d.busy = false; render();
   }
@@ -538,6 +539,7 @@
         h('div', { class: 'cbrow' },
           h('button', { class: 'cb abh', onclick: () => openPickup(b) }, 'Abholung'),
           h('button', { class: 'cb mv', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag'),
+          h('button', { class: 'cb sign', onclick: () => openSign(b) }, '✍ Digital unterschreiben'),
           h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, 'Nachricht')),
         h('div', { class: 'rrow' }, rechBtn(b),
           b.status !== 'storniert' ? h('span', { class: 'calst ' + (calOk ? 'ok' : (b.kalender === 'abweichend' ? 'warn' : 'no')) },
@@ -547,6 +549,7 @@
         state.open['m' + b.id] ? h('div', { class: 'det' },
           sp ? h('div', {}, '🚫 Gesperrter Kunde' + (sp.grund ? ': ' + sp.grund : '')) : null,
           b.telefon ? h('div', {}, h('span', {}, 'Telefon: '), h('a', { href: 'tel:' + b.telefon.replace(/\s+/g, '') }, b.telefon)) : null,
+          b.vertragAt ? h('div', {}, '✍ Vertrag digital unterschrieben am ' + fmtD(b.vertragAt.slice(0, 10))) : null,
           b.email ? h('div', {}, h('span', {}, 'E-Mail: '), h('a', { href: 'mailto:' + b.email }, b.email)) : null,
           b.notiz ? h('div', { class: 'note' }, b.notiz) : null,
           actions(b)) : null,
@@ -1013,6 +1016,7 @@
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
         h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
+        h('button', { class: 'btn sec', onclick: () => { state.menu = false; render(); openMySig(); } }, getMySig() ? 'Meine Unterschrift ändern / löschen' : 'Meine Unterschrift zeichnen'),
         h('button', { class: 'btn sec', onclick: () => { try { localStorage.setItem('mxHeute', heuteOn() ? '0' : '1'); } catch (e) {} render(); } }, heuteOn() ? 'Heute-Übersicht ausblenden' : 'Heute-Übersicht einblenden'),
         h('button', { class: 'btn', onclick: () => setSchnell(!state.schnell) }, state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad) öffnen'),
         (() => { const st = h('div', { class: 'autohint' }); return h('div', {}, shotButton(() => 'allgemein', st), st); })(),
@@ -1031,7 +1035,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 55')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 56')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1404,6 +1408,7 @@
     const setSt = (st) => async () => { await patchBooking(b, { status: st, statusVorher: b.status }); };
     const acts = h('div', { class: 'ovacts' },
       h('button', { class: 'cb mv full', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag erstellen (PDF)'),
+      h('button', { class: 'cb sign full', onclick: () => openSign(b) }, '✍ Digital unterschreiben'),
       b.status !== 'abgeholt' && b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb abh', onclick: setSt('abgeholt') }, 'Als abgeholt markieren') : null,
       b.status === 'abgeholt' ? h('button', { class: 'cb undo', onclick: () => patchBooking(b, { status: (b.statusVorher && b.statusVorher !== 'abgeholt' && b.statusVorher !== 'zurueck') ? b.statusVorher : 'bestaetigt' }) }, 'Rückgängig: nicht abgeholt') : null,
       b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb ret', onclick: setSt('zurueck') }, 'Als zurückgebracht markieren') : null,
@@ -1459,7 +1464,7 @@
       document.head.append(sc);
     });
   }
-  async function buildContract(b, positions) {
+  async function buildContract(b, positions, sig) {
     const PL = await loadPdfLib();
     const res = await fetch('mietvertrag-vorlage.pdf');
     if (!res.ok) throw new Error('tpl');
@@ -1506,6 +1511,14 @@
     const od = 'C-R, ' + fmtDE(b.start);
     T(p2, 47, 600.0, od);
     T(p2, 299, 600.0, od);
+    // Unterschriften (optional): über der Linie, rechts neben "C-R, Datum"
+    const putSig = async (dataUrl, x0, w) => {
+      if (!dataUrl) return;
+      const img = await doc.embedPng(dataUrl);
+      const maxH = 38, sc = Math.min(w / img.width, maxH / img.height), iw = img.width * sc, ih = img.height * sc;
+      p2.drawImage(img, { x: x0, y: H - 598 + 1, width: iw, height: ih });
+    };
+    if (sig) { await putSig(sig.mieter, 128, 144); await putSig(sig.vermieter, 376, 149); }
     return await doc.save();
   }
   async function deliverPdf(bytes, name) {
@@ -1531,6 +1544,184 @@
       console.error('Mietvertrag:', e);
       toast(e && e.message === 'lib' ? 'PDF-Baustein nicht geladen (einmal online öffnen)' : 'Mietvertrag konnte nicht erstellt werden');
     } finally { btn.disabled = false; btn.textContent = old; }
+  }
+
+  // ===== Digital unterschreiben (iPad) =====
+  const SIGKEY = 'mxSigV';
+  const getMySig = () => { try { return localStorage.getItem(SIGKEY) || ''; } catch (e) { return ''; } };
+  const toB64 = (u8) => { let t = ''; for (let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(t); };
+  const fromB64 = (b64) => { const t = atob(b64), u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u; };
+
+  // Zeichenfläche für den Finger. Gibt { el, isEmpty, clear, setImage, toPng } zurück.
+  function sigPad(height) {
+    const cv = h('canvas', { class: 'sigcv' }), box = h('div', { class: 'sigbox', style: 'height:' + (height || 200) + 'px' }, cv);
+    let ctx = null, drawing = false, dirty = false, last = null, dpr = 2;
+    const fit = () => {
+      const r = box.getBoundingClientRect(); if (!r.width) return;
+      dpr = Math.max(2, window.devicePixelRatio || 2);
+      if (cv.width === Math.round(r.width * dpr)) return;
+      const keep = dirty ? cv.toDataURL() : null;
+      cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+      ctx = cv.getContext && cv.getContext('2d');
+      if (ctx) { ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14213d'; ctx.lineWidth = 3.6 * dpr; }
+      if (keep) { const im = new Image(); im.onload = () => ctx && ctx.drawImage(im, 0, 0, cv.width, cv.height); im.src = keep; }
+    };
+    const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * (cv.width / (r.width || 1)), y: (e.clientY - r.top) * (cv.height / (r.height || 1)) }; };
+    const down = (e) => { fit(); if (!ctx) { dirty = true; box.classList.add('has'); return; } e.preventDefault(); drawing = true; last = pt(e); try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+      ctx.beginPath(); ctx.arc(last.x, last.y, ctx.lineWidth / 2, 0, 6.3); ctx.fillStyle = '#14213d'; ctx.fill(); dirty = true; box.classList.add('has'); };
+    const move = (e) => { if (!drawing || !ctx) return; e.preventDefault(); const p = pt(e), m = { x: (last.x + p.x) / 2, y: (last.y + p.y) / 2 };
+      ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.quadraticCurveTo(last.x, last.y, m.x, m.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; };
+    const up = () => { drawing = false; };
+    cv.addEventListener('pointerdown', down); cv.addEventListener('pointermove', move);
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('pointerleave', up);
+    cv.style.touchAction = 'none';
+    setTimeout(fit, 0); window.addEventListener('resize', fit);
+    const api = {
+      el: box,
+      fit,
+      isEmpty: () => !dirty,
+      clear: () => { fit(); if (ctx) ctx.clearRect(0, 0, cv.width, cv.height); dirty = false; box.classList.remove('has'); },
+      setImage: (url) => { fit(); api.clear(); if (!url) return; dirty = true; box.classList.add('has'); const im = new Image(); im.onload = () => { fit(); if (ctx) { const sc = Math.min(cv.width / im.width, cv.height / im.height) * 0.9, w = im.width * sc, hh = im.height * sc; ctx.drawImage(im, (cv.width - w) / 2, (cv.height - hh) / 2, w, hh); } }; im.src = url; },
+      toPng: () => {
+        if (!dirty) return null;
+        try {
+          if (!ctx) return cv.toDataURL('image/png');
+          const d = ctx.getImageData(0, 0, cv.width, cv.height).data; let x0 = cv.width, y0 = cv.height, x1 = 0, y1 = 0;
+          for (let y = 0; y < cv.height; y += 2) for (let x = 0; x < cv.width; x += 2) { if (d[(y * cv.width + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+          if (x1 <= x0 || y1 <= y0) return null;
+          const pad = 6 * dpr, sx = Math.max(0, x0 - pad), sy = Math.max(0, y0 - pad), sw = Math.min(cv.width - sx, x1 - x0 + 2 * pad), sh = Math.min(cv.height - sy, y1 - y0 + 2 * pad);
+          const out = document.createElement('canvas'); out.width = sw; out.height = sh; out.getContext('2d').drawImage(cv, sx, sy, sw, sh, 0, 0, sw, sh);
+          return out.toDataURL('image/png');
+        } catch (e) { return cv.toDataURL('image/png'); }
+      }
+    };
+    return api;
+  }
+
+  // Eigene Unterschrift einmal zeichnen (nur auf diesem Gerät, nicht im Drive)
+  function openMySig() {
+    const old = document.getElementById('mysigov'); if (old) old.remove();
+    const pad = sigPad(220), cur = getMySig();
+    const close = () => { const o = document.getElementById('mysigov'); if (o) o.remove(); };
+    const note = h('div', { class: 'tnone' }, 'Zeichne deine Unterschrift mit dem Finger. Sie wird nur auf diesem Gerät gespeichert, nicht im Drive.');
+    const ov = h('div', { class: 'ov signov', id: 'mysigov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Meine Unterschrift'), h('button', { class: 'btn sec', onclick: close }, 'Abbrechen')),
+      note, pad.el,
+      h('div', { class: 'stack' },
+        h('button', { class: 'btn sec', onclick: () => pad.clear() }, 'Löschen'),
+        h('button', { class: 'btn', onclick: () => {
+          const u = pad.toPng(); if (!u) { note.textContent = 'Bitte zuerst unterschreiben.'; return; }
+          try { localStorage.setItem(SIGKEY, u); } catch (e) { note.textContent = 'Speichern auf diesem Gerät nicht möglich.'; return; }
+          close(); toast('Unterschrift gespeichert'); render();
+        } }, 'Speichern'),
+        cur ? h('button', { class: 'btn sec', onclick: () => { try { localStorage.removeItem(SIGKEY); } catch (e) {} close(); toast('Unterschrift gelöscht'); render(); } }, 'Gespeicherte Unterschrift löschen') : null)));
+    document.body.append(ov);
+    if (cur) setTimeout(() => pad.setImage(cur), 30);
+  }
+
+  // PDF-Seiten als Bilder anzeigen (pdf.js wird erst bei Bedarf geladen)
+  function loadPdfJs() {
+    return new Promise((resolve, reject) => {
+      if (window.pdfjsLib) return resolve(window.pdfjsLib);
+      const sc = document.createElement('script'); sc.src = 'pdf.min.js';
+      sc.onload = () => { if (!window.pdfjsLib) return reject(new Error('pdfjs')); window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js'; resolve(window.pdfjsLib); };
+      sc.onerror = () => reject(new Error('pdfjs')); document.head.append(sc);
+    });
+  }
+  async function renderPages(bytes, into, onlyPage) {
+    into.replaceChildren();
+    try {
+      const lib = await loadPdfJs();
+      const doc = await lib.getDocument({ data: new Uint8Array(bytes) }).promise;
+      const w = Math.max(300, Math.min(into.clientWidth || 700, 900)), dpr = Math.max(2, window.devicePixelRatio || 2);
+      for (let i = 1; i <= doc.numPages; i++) {
+        if (onlyPage && i !== onlyPage) continue;
+        const pg = await doc.getPage(i), vp0 = pg.getViewport({ scale: 1 }), sc = (w * dpr) / vp0.width, vp = pg.getViewport({ scale: sc });
+        const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.className = 'spage';
+        await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise; into.append(c);
+      }
+    } catch (e) { into.replaceChildren(h('div', { class: 'tnone' }, 'Vorschau nicht verfügbar (einmal online öffnen). Der Vertrag wird trotzdem korrekt erstellt.')); }
+  }
+
+  // Ordner "Mietverträge/<Jahr>" im Drive, PDF hochladen; offline wird es gemerkt
+  async function queueContract(name, year, bytes) {
+    const q = (await DB.getMeta('pdfQueue')) || [];
+    q.push({ name, year, b64: toB64(bytes), at: nowIso() });
+    await DB.setMeta('pdfQueue', q);
+  }
+  async function flushContracts() {
+    const q = (await DB.getMeta('pdfQueue')) || [];
+    if (!q.length || !navigator.onLine || !GCAL.isSignedIn()) return 0;
+    let done = 0; const rest = [];
+    for (const it of q) {
+      try {
+        const root = await GDRIVE.ensureFolder('Mietverträge', 'root'), yr = await GDRIVE.ensureFolder(String(it.year), root);
+        await GDRIVE.uploadPdf(new Blob([fromB64(it.b64)], { type: 'application/pdf' }), it.name, yr); done++;
+      } catch (e) { rest.push(it); }
+    }
+    await DB.setMeta('pdfQueue', rest);
+    return done;
+  }
+
+  function printPdf(bytes) {
+    try {
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+      f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { window.open(url, '_blank'); } };
+      f.src = url; document.body.append(f); setTimeout(() => { f.remove(); URL.revokeObjectURL(url); }, 120000);
+    } catch (e) { toast('Drucken nicht möglich – bitte über Teilen drucken'); }
+  }
+
+  async function openSign(b) {
+    const old = document.getElementById('signov'); if (old) old.remove();
+    const pos = Avail.positionsOf(b, state.arts);
+    if (!pos.length) { toast('Keine Artikel zugeordnet'); return; }
+    const mine = getMySig(), pM = sigPad(210), pV = sigPad(210);
+    let useMine = !!mine;
+    const pages = h('div', { class: 'spages' }, h('div', { class: 'tnone' }, 'Lade Vertrag …'));
+    const status = h('div', { class: 'tnone' });
+    const close = () => { const o = document.getElementById('signov'); if (o) o.remove(); };
+    const mineRow = mine ? h('label', { class: 'calrow' }, h('input', { type: 'checkbox', checked: '', onchange: (e) => { useMine = e.target.checked; if (useMine) pV.setImage(mine); else pV.clear(); } }), h('span', {}, 'Meine Unterschrift einsetzen')) : h('div', { class: 'tnone' }, 'Keine eigene Unterschrift gespeichert (⋯-Menü → Meine Unterschrift). Du kannst hier auch direkt unterschreiben.');
+    const doneBtn = h('button', { class: 'btn', onclick: async (ev) => {
+      if (pM.isEmpty()) { status.textContent = 'Bitte zuerst den Mieter unterschreiben lassen.'; return; }
+      const btn = ev.currentTarget; btn.disabled = true; btn.textContent = 'Erstelle …';
+      try { await finish(); } catch (e) { console.error(e); status.textContent = 'Fehler beim Erstellen des Vertrags.'; btn.disabled = false; btn.textContent = 'Fertig'; }
+    } }, 'Fertig');
+    const finish = async () => {
+      const sig = { mieter: pM.toPng(), vermieter: pV.isEmpty() ? null : pV.toPng() };
+      const bytes = await buildContract(b, pos, sig);
+      const name = contractFilename(b).replace(/\.pdf$/, '') + '_unterschrieben.pdf', year = parse(b.start).getFullYear();
+      let drive = 'wartet';
+      try {
+        if (navigator.onLine && GCAL.isSignedIn()) {
+          const root = await GDRIVE.ensureFolder('Mietverträge', 'root'), yr = await GDRIVE.ensureFolder(String(year), root);
+          await GDRIVE.uploadPdf(new Blob([bytes], { type: 'application/pdf' }), name, yr); drive = 'ok';
+        } else await queueContract(name, year, bytes);
+      } catch (e) { try { await queueContract(name, year, bytes); } catch (x) { drive = 'fehler'; } }
+      try { await patchBooking(b, { vertrag: 'unterschrieben', vertragAt: nowIso() }); } catch (e) { /* Vertrag trotzdem gültig */ }
+      const res = document.getElementById('signov'); if (!res) return;
+      const pv = h('div', { class: 'spages' });
+      res.replaceChildren(h('div', { class: 'ovin' },
+        h('div', { class: 'ovtop' }, h('h2', {}, 'Vertrag unterschrieben ✓'), h('button', { class: 'btn sec', onclick: close }, 'Schließen')),
+        h('div', { class: 'warnbox okbox' }, drive === 'ok' ? '✓ In Drive abgelegt: Mietverträge/' + year + '/' + name : drive === 'wartet' ? 'Kein Netz oder nicht bei Google angemeldet: Der Vertrag ist auf diesem Gerät gemerkt und wird beim nächsten Abgleich hochgeladen.' : '⚠ Ablage im Drive nicht möglich. Bitte jetzt teilen und speichern.'),
+        h('div', { class: 'stack' },
+          h('button', { class: 'btn', onclick: async () => { const r = await deliverPdf(bytes, name); if (r === 'download') toast('PDF gespeichert'); } }, 'Teilen / Drucken (AirDrop, Mail, Nachrichten)'),
+          h('button', { class: 'btn sec', onclick: () => printPdf(bytes) }, 'Direkt drucken (AirPrint)'),
+          h('button', { class: 'btn sec', onclick: close }, 'Fertig, ohne Kopie')),
+        h('div', { class: 'tnone' }, 'Tipp: Fragt der Kunde nach einer Kopie, im Teilen-Menü AirDrop, Mail, Nachrichten oder Drucken wählen.'),
+        pv));
+      renderPages(bytes, pv, 2);
+    };
+    const ov = h('div', { class: 'ov signov', id: 'signov' }, h('div', { class: 'ovin' },
+      h('div', { class: 'ovtop' }, h('h2', {}, 'Mietvertrag unterschreiben'), h('button', { class: 'btn sec', onclick: close }, 'Abbrechen')),
+      h('div', { class: 'tnone' }, (b.name || '') + ' · ' + fmtShort(b.start) + (b.ende !== b.start ? ' – ' + fmtShort(b.ende) : '') + '. Bitte Vertrag lesen, dann unten unterschreiben.'),
+      pages,
+      h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Unterschrift Mieter'), pM.el, h('button', { class: 'btn sec sm', onclick: () => pM.clear() }, 'Löschen')),
+      h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Unterschrift Vermieter'), mineRow, pV.el, h('button', { class: 'btn sec sm', onclick: () => { pV.clear(); useMine = false; const c = ov.querySelector('.calrow input'); if (c) c.checked = false; } }, 'Löschen')),
+      status, h('div', { class: 'stack' }, doneBtn)));
+    document.body.append(ov);
+    if (mine) setTimeout(() => pV.setImage(mine), 40);
+    try { const base = await buildContract(b, pos, null); await renderPages(base, pages); } catch (e) { pages.replaceChildren(h('div', { class: 'tnone' }, 'Vertrag konnte nicht angezeigt werden.')); }
   }
 
   // --- Statistik ---
