@@ -300,7 +300,8 @@
       let inboxMsg = '';
       try {
         const ib = await processInbox();
-        if (ib.dateien) inboxMsg = ' Eingang: ' + ib.neu + ' neu, ' + ib.geaendert + ' geändert' + (ib.weg ? ', ' + ib.weg + ' gelöscht' : '') + (ib.bestand ? ', Bestand ' + ib.bestand + ' geändert' : '') + '.' + (ib.warn.length ? ' Hinweise: ' + ib.warn.join('; ') : '');
+        if (!ib.dateien) inboxMsg = ' Eingang: ' + ib.gesehen + ' Dateien in Drive, alle schon übernommen (neueste ' + ib.neuste + ').';
+        else inboxMsg = ' Eingang (' + ib.dateien + ' von ' + ib.gesehen + ' Dateien neu): ' + ib.neu + ' neu, ' + ib.geaendert + ' geändert' + (ib.weg ? ', ' + ib.weg + ' gelöscht' : '') + (ib.bestand ? ', Bestand ' + ib.bestand + ' geändert' : '') + '.' + (ib.warn.length ? ' Hinweise: ' + ib.warn.join('; ') : '');
       } catch (e) { inboxMsg = ' Eingang nicht gelesen (' + (e.message || 'Fehler') + ').'; }
       const remote = await GDRIVE.find();
       let rdata = null;
@@ -1045,7 +1046,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 72')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 73')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -2512,7 +2513,7 @@
       done.push(f.id);
     }
     await DB.setMeta('eingangDone', done.slice(-200));
-    return { neu, geaendert, weg, bestand, warn, dateien: fresh.length };
+    return { neu, geaendert, weg, bestand, warn, dateien: fresh.length, gesehen: files.length, neuste: files.length ? files.map((f) => f.name).sort().pop() : '' };
   }
 
   function syncBanner() {
