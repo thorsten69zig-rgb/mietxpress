@@ -1041,7 +1041,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 61')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 62')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1639,7 +1639,7 @@
     try {
       const lib = await loadPdfJs();
       const doc = await lib.getDocument({ data: new Uint8Array(bytes) }).promise;
-      const w = Math.max(300, Math.min(into.clientWidth || 700, 900)), dpr = Math.max(2, window.devicePixelRatio || 2);
+      const w = Math.max(300, Math.min(into.clientWidth || 700, 1600)), dpr = Math.max(2, window.devicePixelRatio || 2);
       for (let i = 1; i <= doc.numPages; i++) {
         if (onlyPage && i !== onlyPage) continue;
         const pg = await doc.getPage(i), vp0 = pg.getViewport({ scale: 1 }), sc = (w * dpr) / vp0.width, vp = pg.getViewport({ scale: sc });
