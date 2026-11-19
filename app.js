@@ -1041,7 +1041,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 60')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 61')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1771,7 +1771,7 @@
             try { if (navigator.clipboard) await navigator.clipboard.writeText(b.email); } catch (e) { /* egal */ }
             toast('Adresse kopiert – im Feld „An“ einfügen. Betreff: ' + MAILSUBJ);
             const file = new File([bytes], name, { type: 'application/pdf' });
-            const text = 'Guten Tag' + (b.name ? ' ' + b.name : '') + ',\n\nanbei erhalten Sie Ihren unterschriebenen Mietvertrag für den ' + fmtDE(b.start) + (b.ende !== b.start ? ' – ' + fmtDE(b.ende) : '') + '.\n\nVielen Dank für Ihre Buchung!\n\nFreundliche Grüße\nThorsten Müller\nMüllers MietXpress\n0163 3865144';
+            const text = 'Guten Tag' + (b.name ? ' ' + b.name : '') + ',\n\nanbei erhalten Sie Ihren unterschriebenen Mietvertrag für den ' + fmtDE(b.start) + (b.ende !== b.start ? ' – ' + fmtDE(b.ende) : '') + '.\n\nVielen Dank für Ihre Buchung!\n\nFreundliche Grüße\n\nMiet- & Eventservice\nThorsten Müller\n📞 0163 3865144\n✉️ info@muellers-mietxpress.de\n🌐 www.muellers-mietxpress.de';
             if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: MAILSUBJ, text }); } catch (e) { /* abgebrochen */ } }
             else await deliverPdf(bytes, name);
           } }, '📧 Per E-Mail senden an ' + b.email) : null,
