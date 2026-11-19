@@ -1016,6 +1016,12 @@
       h('div', { class: 'stack' },
         h('button', { class: 'btn', onclick: openPaste }, 'Buchungen einfügen (von Claude)'),
         h('button', { class: 'btn sec', onclick: () => openSperr() }, 'Sperrliste (' + state.sperre.length + ') bearbeiten'),
+        h('button', { class: 'btn sec', onclick: async () => {
+          await saveBooking({ id: 'muster-1211', name: 'Max Mustermann (Muster)', telefon: '0163 0000000', email: 'e-post-mueller@outlook.de', adresse: 'Musterweg 1, 44575 Castrop-Rauxel',
+            start: '2026-12-11', ende: '2026-12-11', abholzeit: '10:00', rueckzeit: '21:00', status: 'bestaetigt', preis: 50, anzahlung: 10, kaution: 100, kautionStatus: 'offen',
+            notiz: 'MUSTERBUCHUNG zum Üben – danach löschen', erstellt: iso(new Date()), positionen: [{ artikel: 'Hüpfburg Schloss', anzahl: 1 }] });
+          state.menu = false; render(); toast('Musterbuchung am 11.12. angelegt');
+        } }, 'Musterbuchung 11.12. anlegen (zum Üben)'),
         h('button', { class: 'btn sec', onclick: () => { state.menu = false; render(); openMySig(); } }, getMySig() ? 'Meine Unterschrift ändern / löschen' : 'Meine Unterschrift zeichnen'),
         h('button', { class: 'btn sec', onclick: () => { try { localStorage.setItem('mxHeute', heuteOn() ? '0' : '1'); } catch (e) {} render(); } }, heuteOn() ? 'Heute-Übersicht ausblenden' : 'Heute-Übersicht einblenden'),
         h('button', { class: 'btn', onclick: () => setSchnell(!state.schnell) }, state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad) öffnen'),
@@ -1035,7 +1041,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 58')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 59')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1761,6 +1767,14 @@
         payView(b),
         h('div', { class: 'stack' },
           h('button', { class: 'btn', onclick: async () => { const r = await deliverPdf(bytes, name); if (r === 'download') toast('PDF gespeichert'); } }, 'Teilen / Drucken (AirDrop, Mail, Nachrichten)'),
+          b.email ? h('button', { class: 'btn', onclick: async () => {
+            try { if (navigator.clipboard) await navigator.clipboard.writeText(b.email); } catch (e) { /* egal */ }
+            toast('Adresse kopiert: ' + b.email + ' – im Feld „An“ einfügen');
+            const file = new File([bytes], name, { type: 'application/pdf' });
+            const text = 'Guten Tag' + (b.name ? ' ' + b.name : '') + ',\n\nanbei erhalten Sie Ihren unterschriebenen Mietvertrag für den ' + fmtDE(b.start) + (b.ende !== b.start ? ' – ' + fmtDE(b.ende) : '') + '.\n\nVielen Dank für Ihre Buchung!\n\nFreundliche Grüße\nThorsten Müller\nMüllers MietXpress\n0163 3865144';
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'Ihr Mietvertrag – Müllers MietXpress', text }); } catch (e) { /* abgebrochen */ } }
+            else await deliverPdf(bytes, name);
+          } }, '📧 Per E-Mail senden an ' + b.email) : null,
           h('button', { class: 'btn sec', onclick: () => printPdf(bytes) }, 'Direkt drucken (AirPrint)'),
           h('button', { class: 'btn sec', onclick: close }, 'Fertig, ohne Kopie')),
         h('div', { class: 'tnone' }, 'Tipp: Fragt der Kunde nach einer Kopie, im Teilen-Menü AirDrop, Mail, Nachrichten oder Drucken wählen.'),
