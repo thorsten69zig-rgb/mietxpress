@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 71')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 72')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -2486,12 +2486,22 @@
       const del = j && Array.isArray(j.loeschen) ? j.loeschen.map(String) : [];
       const artUp = j && Array.isArray(j.artikel) ? j.artikel.filter((x) => x && x.name && x.menge != null) : []; // Bestandsänderungen: { name, menge }
       try {
-        for (const it of prepItems(list)) {
+        // Jeder Eintrag einzeln: ein unbrauchbarer Eintrag (z. B. Änderung an einer Buchung, die es in der App nicht gibt) darf die anderen nicht blockieren
+        let okItems = 0, badItems = 0;
+        for (let i = 0; i < list.length; i++) {
+          const o = list[i];
+          if (o && typeof o === 'object' && o.id && !o.start && !state.bookings.some((x) => x.id === String(o.id))) {
+            warn.push(f.name + ': Änderung an „' + o.id + '“ übersprungen, diese Buchung gibt es in der App nicht (evtl. schon gelöscht).'); badItems++; continue;
+          }
+          let it;
+          try { it = prepItems([o])[0]; } catch (e) { warn.push(f.name + ': Eintrag ' + (i + 1) + (o && o.id ? ' („' + o.id + '“)' : '') + ' übersprungen, ' + String(e.message || e).replace(/^Eintrag \d+ /, '')); badItems++; continue; }
           const d = Object.assign({}, it.b, { positionen: (it.b.positionen || Avail.positionsOf(it.b, state.arts)).map((p) => ({ artikel: p.artikel, anzahl: p.anzahl })) });
           editWarnings(d).forEach((w) => warn.push((it.b.name || 'Buchung') + ': ' + w));
           await saveBooking(it.b);
           if (it.isNew) neu++; else geaendert++;
+          okItems++;
         }
+        if (list.length && !okItems && badItems) continue; // komplett unbrauchbar: nicht als erledigt merken
         for (const id of del) { const b = state.bookings.find((x) => x.id === id); if (b) { await removeBooking(b); weg++; } }
         if (artUp.length) {
           const list = state.arts.map((x) => Object.assign({}, x));
