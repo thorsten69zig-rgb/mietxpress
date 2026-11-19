@@ -539,8 +539,8 @@
           b.adresse ? h('a', { href: 'https://maps.apple.com/?q=' + encodeURIComponent(b.adresse) }, b.adresse) : null) : null,
         (b.status === 'bestaetigt' || b.status === 'angefragt') && b.start <= ref ? h('button', { class: 'quick qa', onclick: quickSt(b, 'abgeholt') }, '✓ Abgeholt') : null,
         b.status === 'abgeholt' ? h('button', { class: 'quick qr', onclick: quickSt(b, 'zurueck') }, '✓ Zurückgebracht') : null,
+        h('button', { class: 'cb abh bigabh', onclick: () => openPickup(b) }, 'Abholung'),
         h('div', { class: 'cbrow' },
-          h('button', { class: 'cb abh', onclick: () => openPickup(b) }, 'Abholung'),
           h('button', { class: 'cb mv', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag'),
           h('button', { class: 'cb sign', onclick: () => openSign(b) }, '✍ Digital unterschreiben'),
           h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, 'Nachricht')),
@@ -1046,7 +1046,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 73')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 74')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1408,18 +1408,11 @@
       b.email ? row('E-Mail', b.email) : null,
       b.adresse ? row('Adresse', b.adresse) : null,
       b.notiz ? row('Notiz', b.notiz) : null);
-    const chk = (key, label) => {
-      const k = b.id + '|' + key;
-      return h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: state.chk[k] ? '' : null, onchange: (ev) => { state.chk[k] = ev.target.checked; } }), h('span', {}, label));
-    };
-    const list = h('div', { class: 'slip pad' }, h('div', { class: 'ct' }, 'Vor der Übergabe'),
-      chk('id', 'Lichtbildausweis geprüft'), chk('vertrag', 'Mietvertrag unterschrieben'),
-      ps.filter((p) => ACCS[p.artikel]).map((p) => chk('acc-' + p.artikel, p.artikel + ': inkl. ' + ACCS[p.artikel])),
-      chk('zustand', 'Zustand gemeinsam geprüft'));
     const setSt = (st) => async () => { await patchBooking(b, { status: st, statusVorher: b.status }); };
+    const FOTOS_PLATZ = h('div', { class: 'fotoslot' }, fotoSection(b));
     const acts = h('div', { class: 'ovacts' },
       h('button', { class: 'cb mv full', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag erstellen (PDF)'),
-      h('button', { class: 'cb sign full', onclick: () => openSign(b) }, '✍ Digital unterschreiben'),
+      FOTOS_PLATZ,
       b.status !== 'abgeholt' && b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb abh', onclick: setSt('abgeholt') }, 'Als abgeholt markieren') : null,
       b.status === 'abgeholt' ? h('button', { class: 'cb undo', onclick: () => patchBooking(b, { status: (b.statusVorher && b.statusVorher !== 'abgeholt' && b.statusVorher !== 'zurueck') ? b.statusVorher : 'bestaetigt' }) }, 'Rückgängig: nicht abgeholt') : null,
       b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb ret', onclick: setSt('zurueck') }, 'Als zurückgebracht markieren') : null,
@@ -1427,12 +1420,11 @@
       b.status === 'abgeholt' ? h('span', { class: 'chip st-abgeholt', style: 'align-self:center' }, 'Abgeholt ✓') : null,
       b.status === 'zurueck' ? h('span', { class: 'chip st-zurueck', style: 'align-self:center' }, 'Zurück ✓') : null,
       rechBtn(b),
-      h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, '💬 Nachricht'),
       sm ? null : h('button', { class: 'cb sperr', onclick: () => { state.pickup = null; openSperr({ name: b.name || '', telefon: b.telefon || '' }); } }, '🚫 Kunde sperren'));
     return h('div', { class: 'ov', id: 'pickupov' }, h('div', { class: 'ovin' },
       h('div', { class: 'ovtop' }, h('h2', {}, 'Abholung'), h('button', { class: 'btn sec', onclick: closePickup }, 'Schließen')),
       sm ? h('div', { class: 'warnbox err2' }, '🚫 Gesperrter Kunde' + (sm.grund ? ' – ' + sm.grund : '')) : null,
-      slip, due, acts, h('div', { style: 'height:10px' }), list, fotoSection(b), info));
+      slip, due, acts, h('div', { style: 'height:10px' }), info));
   }
 
   // --- Mietvertrag (PDF-Vorlage im Browser ausfüllen, funktioniert offline) ---

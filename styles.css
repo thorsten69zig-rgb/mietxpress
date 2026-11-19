@@ -590,3 +590,6 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .fthumb .cam{font-size:30px}
 .fwrap{position:relative;width:92px;height:92px}
 .fdel{position:absolute;top:-8px;right:-8px;width:34px;height:34px;border-radius:50%;border:2px solid #fff;background:#d64545;color:#fff;font-size:16px;line-height:1;padding:0;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+
+.fotoslot{flex:1 1 100%}.fotoslot .slip{margin:0}
+.cb.bigabh{display:block;width:100%;margin-top:12px;padding:20px 14px;font-size:20px;border-radius:16px}
