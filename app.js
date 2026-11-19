@@ -1031,7 +1031,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 54')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 55')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1884,19 +1884,24 @@
     return {
       avail: 'Hallo,\nja, ' + (o.art && GEN[o.art] ? GEN[o.art] + ' ' + (DISP[o.art] || o.art) + ' wäre' : 'das wäre') + ' da noch verfügbar.\n\nMit freundlichen Grüßen\n' + sig,
       res: 'Hallo lieber Kunde,\nfür die Reservierung sende bitte 10 € per PayPal an info@muellers-mietxpress.de\nName und Mietdatum einfach im Betreff angeben.\n\nSobald die Anzahlung bei mir eingegangen ist, ist ' + fest + ' und ich schicke dir alle weiteren Infos zur Abholung.\n\nMit freundlichen Grüßen\n' + sig,
-      best: 'Hallo lieber Kunde,\nvielen Dank für deine Buchung! ' +
-        (o.hasData ? '' : 'Für den Mietvertrag benötige ich noch deinen vollständigen Namen, deine Adresse und deine E-Mail-Adresse. ') +
-        'Hier nochmal alle Infos auf einen Blick:\n' +
+      best: 'Hallo lieber Kunde,\nvielen Dank für deine Buchung! 🙏\n\n' +
+        'Hier alle Infos auf einen Blick:\n' +
         '📍 Abholadresse: Leveringhauser Str. 80, 44581 Castrop-Rauxel\n' +
         '🕐 Abholzeit: ' + (o.ab ? timeDe(o.ab) : '[UHRZEIT]') + '\n' +
         '📅 Datum: ' + dat + '\n' +
-        '🪪 Bitte mitbringen: Lichtbildausweis + Kaution (bar)\n\nBis dann! 😊\n' + sig,
+        '🪪 Bitte mitbringen: Lichtbildausweis + Kaution (bar)\n' +
+        (o.hasData ? '' : '\n❗ Noch von dir benötigt, damit ich den Mietvertrag fertig machen kann:\n' + (o.miss || ['n', 'a', 'e']).map((k) => ({ n: '👤 Vollständiger Name', a: '🏠 Adresse (Straße, Hausnummer, PLZ, Ort)', e: '✉️ E-Mail-Adresse' })[k]).join('\n') + '\n') +
+        '\nBis dann! 😊\n' + sig,
       bank: 'Hallo lieber Kunde,\nkein Problem, du kannst die 10 € für die Reservierung auch per Überweisung senden:\nIBAN: ' + IBAN_TXT + '\nName und Mietdatum einfach im Verwendungszweck angeben.\n\nSobald die Anzahlung bei mir eingegangen ist, ist ' + fest + ' und ich schicke dir alle weiteren Infos zur Abholung.\n\nMit freundlichen Grüßen\n' + sig
     };
   }
   function buildMsgs(b) {
-    const hasData = !!(b.name && b.name.indexOf('(Name fehlt)') < 0 && b.adresse && b.email);
-    const m = msgTexts({ d: parse(b.start), ab: b.abholzeit, hasData });
+    const miss = [];
+    if (!(b.name && b.name.indexOf('(Name fehlt)') < 0 && /\s|,/.test(String(b.name).trim()))) miss.push('n');
+    if (!b.adresse) miss.push('a');
+    if (!b.email) miss.push('e');
+    const hasData = !miss.length;
+    const m = msgTexts({ d: parse(b.start), ab: b.abholzeit, hasData, miss });
     return [
       { t: '1. Reservierung (PayPal)', x: m.res },
       { t: '2. Bestätigung mit Infos', x: m.best, hint: hasData ? 'Name, Adresse und E-Mail sind schon da, deshalb ohne Nachfrage.' : 'Name, Adresse oder E-Mail fehlen noch, deshalb mit Nachfrage.' },
