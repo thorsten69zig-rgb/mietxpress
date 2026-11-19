@@ -471,9 +471,9 @@
     const t = String(b.notiz || ''), out = [];
     const w = t.match(/Wochenendpaket\s*(Fr\s*[–-]\s*So|Fr\s*[–-]\s*Sa|Sa\s*[–-]\s*So)?/i);
     if (w) out.push({ k: 'wk', t: 'Wochenendpaket' + (w[1] ? ' ' + w[1].replace(/\s*-\s*/, '–').replace(/\s+/g, '') : '') });
-    const re = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
+    const re = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?|Extra:\s*[^()€+\n]*?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
     let m;
-    while ((m = re.exec(t))) out.push({ k: 'ex', t: '+ ' + m[1].trim() + ' · ' + m[3].replace('.', ',') + ' €', d: m[2] || '' });
+    while ((m = re.exec(t))) out.push({ k: 'ex', t: '+ ' + m[1].replace(/^Extra:\s*/, '').trim() + ' · ' + m[3].replace('.', ',') + ' €', d: m[2] || '' });
     return out;
   }
   function isKombi(b) {
@@ -1035,7 +1035,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 56')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 57')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1493,13 +1493,13 @@
       if (pos.artikel === 'Bierzeltgarnitur') { T(p1, 369, 642.6, n, 9); T(p1, 442, 642.6, n * 2, 9); }
     });
     // Zusätzliche Leistungen / Pakete (Tabelle Seite 2, Zeilen ab 160 pt, Höhe 23,6 pt)
-    const exRe = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
+    const exRe = /\+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?|Extra:\s*[^()€+\n]*?)\s*(?:\(([^)]*)\))?\s*(\d+(?:[.,]\d+)?)\s*€/g;
     let xm, xi = 0, exSum = 0; const ntxt = String(b.notiz || '');
     while ((xm = exRe.exec(ntxt)) && xi < 3) {
       const exVal = Number(xm[3].replace(',', '.')); exSum += exVal;
       const price = deMoney(exVal);
       const top = 160 + xi * 23.6 + 15.5;
-      T(p2, 50, top, xm[1].trim() + (xm[2] ? ' (' + xm[2].trim() + ')' : ''), 9);
+      T(p2, 50, top, xm[1].replace(/^Extra:\s*/, '').trim() + (xm[2] ? ' (' + xm[2].trim() + ')' : ''), 9);
       T(p2, 392, top, '1', 9);
       T(p2, 522 - font.widthOfTextAtSize(price, 9), top, price, 9);
       xi++;
@@ -1672,7 +1672,8 @@
     } catch (e) { toast('Drucken nicht möglich – bitte über Teilen drucken'); }
   }
 
-  async function openSign(b) {
+  async function openSign(b0) {
+    let b = b0;
     const old = document.getElementById('signov'); if (old) old.remove();
     const pos = Avail.positionsOf(b, state.arts);
     if (!pos.length) { toast('Keine Artikel zugeordnet'); return; }
@@ -1682,6 +1683,40 @@
     const status = h('div', { class: 'tnone' });
     const close = () => { const o = document.getElementById('signov'); if (o) o.remove(); };
     const mineRow = mine ? h('label', { class: 'calrow' }, h('input', { type: 'checkbox', checked: '', onchange: (e) => { useMine = e.target.checked; if (useMine) pV.setImage(mine); else pV.clear(); } }), h('span', {}, 'Meine Unterschrift einsetzen')) : h('div', { class: 'tnone' }, 'Keine eigene Unterschrift gespeichert (⋯-Menü → Meine Unterschrift). Du kannst hier auch direkt unterschreiben.');
+    const payView = (bk) => {
+      const offen = Math.max(0, (Number(bk.preis) || 0) - (Number(bk.anzahlung) || 0));
+      const kOff = (bk.kaution > 0 && bk.kautionStatus === 'offen') ? bk.kaution : 0, total = offen + kOff;
+      const row = (l, v, cls) => h('div', { class: 'r' + (cls ? ' ' + cls : '') }, h('span', {}, l), h('b', {}, v));
+      return h('div', {},
+        h('div', { class: 'slip' },
+          row('Mietgegenstand', bk.artikel || '–'),
+          row('Mietpreis gesamt', eur(bk.preis)),
+          row('Schon bezahlt', eur(bk.anzahlung)),
+          row('Noch zu zahlen', offen > 0 ? eur(offen) : '0 € ✓'),
+          row('Kaution', bk.kaution > 0 ? eur(bk.kaution) + (bk.kautionStatus === 'erhalten' ? ' ✓ erhalten' : '') : 'keine')),
+        total > 0
+          ? h('div', { class: 'pay' }, h('span', {}, h('small', {}, 'Jetzt kassieren (bar)'), h('br'), h('small', {}, [offen > 0 ? 'Rest ' + eur(offen) : null, kOff > 0 ? 'Kaution ' + eur(kOff) : null].filter(Boolean).join(' + '))), h('b', {}, eur(total)))
+          : h('div', { class: 'pay ok' }, h('span', {}, 'Alles bezahlt ✓')));
+    };
+    const payBox = h('div', {}, payView(b));
+    const exName = h('input', { type: 'text', placeholder: 'Was? z. B. Nebelflüssigkeit', maxlength: '40' });
+    const exPrice = h('input', { type: 'text', inputmode: 'decimal', placeholder: '€' });
+    const exMsg = h('div', { class: 'tnone' });
+    const addExtra = async () => {
+      const nm = exName.value.replace(/[()€+\n]/g, ' ').replace(/\s+/g, ' ').trim(), pr = Number(String(exPrice.value).replace(',', '.'));
+      if (!nm || !(pr > 0)) { exMsg.textContent = 'Bitte Bezeichnung und Preis eintragen.'; return; }
+      const cnt = (String(b.notiz || '').match(/\+\s*(?:[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ]*?Paket(?:\s*\d+)?|Extra:)/g) || []).length;
+      if (cnt >= 3) { exMsg.textContent = 'Im Vertrag ist Platz für 3 Zusatzzeilen.'; return; }
+      const notiz = (b.notiz ? String(b.notiz).replace(/\s+$/, '') + '\n' : '') + '+ Extra: ' + nm + ' ' + String(pr).replace('.', ',') + ' €';
+      const p = { preis: Math.round(((Number(b.preis) || 0) + pr) * 100) / 100, notiz };
+      try { await patchBooking(b, p); } catch (e) { exMsg.textContent = 'Konnte nicht gespeichert werden.'; return; }
+      b = Object.assign({}, b, p); exName.value = ''; exPrice.value = '';
+      exMsg.textContent = '✓ ' + nm + ' ' + eur(pr) + ' dazugebucht. Vertrag unten ist aktualisiert.';
+      payBox.replaceChildren(payView(b));
+      try { const base = await buildContract(b, pos, null); await renderPages(base, pages); } catch (e) { /* Vorschau egal */ }
+    };
+    const extraBox = h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Spontan etwas dazu? (vor der Unterschrift)'),
+      h('div', { class: 'row2' }, exName, exPrice), h('button', { class: 'btn sec sm', onclick: addExtra }, '＋ Dazubuchen'), exMsg);
     const doneBtn = h('button', { class: 'btn', onclick: async (ev) => {
       if (pM.isEmpty()) { status.textContent = 'Bitte zuerst den Mieter unterschreiben lassen.'; return; }
       const btn = ev.currentTarget; btn.disabled = true; btn.textContent = 'Erstelle …';
@@ -1698,12 +1733,13 @@
           await GDRIVE.uploadPdf(new Blob([bytes], { type: 'application/pdf' }), name, yr); drive = 'ok';
         } else await queueContract(name, year, bytes);
       } catch (e) { try { await queueContract(name, year, bytes); } catch (x) { drive = 'fehler'; } }
-      try { await patchBooking(b, { vertrag: 'unterschrieben', vertragAt: nowIso() }); } catch (e) { /* Vertrag trotzdem gültig */ }
+      try { await patchBooking(b, { vertrag: 'unterschrieben', vertragAt: nowIso() }); b = Object.assign({}, b, { vertrag: 'unterschrieben' }); } catch (e) { /* Vertrag trotzdem gültig */ }
       const res = document.getElementById('signov'); if (!res) return;
       const pv = h('div', { class: 'spages' });
       res.replaceChildren(h('div', { class: 'ovin' },
         h('div', { class: 'ovtop' }, h('h2', {}, 'Vertrag unterschrieben ✓'), h('button', { class: 'btn sec', onclick: close }, 'Schließen')),
         h('div', { class: 'warnbox okbox' }, drive === 'ok' ? '✓ In Drive abgelegt: Mietverträge/' + year + '/' + name : drive === 'wartet' ? 'Kein Netz oder nicht bei Google angemeldet: Der Vertrag ist auf diesem Gerät gemerkt und wird beim nächsten Abgleich hochgeladen.' : '⚠ Ablage im Drive nicht möglich. Bitte jetzt teilen und speichern.'),
+        payView(b),
         h('div', { class: 'stack' },
           h('button', { class: 'btn', onclick: async () => { const r = await deliverPdf(bytes, name); if (r === 'download') toast('PDF gespeichert'); } }, 'Teilen / Drucken (AirDrop, Mail, Nachrichten)'),
           h('button', { class: 'btn sec', onclick: () => printPdf(bytes) }, 'Direkt drucken (AirPrint)'),
@@ -1716,6 +1752,7 @@
       h('div', { class: 'ovtop' }, h('h2', {}, 'Mietvertrag unterschreiben'), h('button', { class: 'btn sec', onclick: close }, 'Abbrechen')),
       h('div', { class: 'tnone' }, (b.name || '') + ' · ' + fmtShort(b.start) + (b.ende !== b.start ? ' – ' + fmtShort(b.ende) : '') + '. Bitte Vertrag lesen, dann unten unterschreiben.'),
       pages,
+      extraBox, payBox,
       h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Unterschrift Mieter'), pM.el, h('button', { class: 'btn sec sm', onclick: () => pM.clear() }, 'Löschen')),
       h('div', { class: 'sgroup' }, h('div', { class: 'slabel' }, 'Unterschrift Vermieter'), mineRow, pV.el, h('button', { class: 'btn sec sm', onclick: () => { pV.clear(); useMine = false; const c = ov.querySelector('.calrow input'); if (c) c.checked = false; } }, 'Löschen')),
       status, h('div', { class: 'stack' }, doneBtn)));

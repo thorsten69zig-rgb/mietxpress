@@ -555,3 +555,8 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .sigbox::before{content:'';position:absolute;left:14px;right:14px;bottom:34px;border-bottom:1px solid #dfe3ec;pointer-events:none}
 .btn.sm{min-height:38px;padding:6px 14px;font-size:14px}
 .okbox{background:rgba(47,166,106,.14);color:#14633e;border-color:rgba(47,166,106,.4)}
+/* v57: Extras dazubuchen im Unterschrift-Ablauf */
+.signov .row2{display:flex;gap:8px;margin:6px 0}
+.signov .row2 input{flex:1;min-width:0;font-size:18px;padding:12px;border:1px solid var(--line,#d5d9e6);border-radius:10px}
+.signov .row2 input:last-child{flex:0 0 90px}
+.signov .pay,.signov .slip{margin-top:10px}
