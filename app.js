@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 68')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 69')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1655,9 +1655,9 @@
   }
 
   // Ordner "Mietverträge/<Jahr>" im Drive, PDF hochladen; offline wird es gemerkt
-  async function queueContract(name, year, bytes) {
+  async function queueContract(name, year, bytes, folder) {
     const q = (await DB.getMeta('pdfQueue')) || [];
-    q.push({ name, year, b64: toB64(bytes), at: nowIso() });
+    q.push({ name, year, folder: folder || '', b64: toB64(bytes), at: nowIso() });
     await DB.setMeta('pdfQueue', q);
   }
   async function flushContracts() {
@@ -1666,8 +1666,9 @@
     let done = 0; const rest = [];
     for (const it of q) {
       try {
-        const root = await GDRIVE.ensureFolder('Mietverträge', 'root'), yr = await GDRIVE.ensureFolder(String(it.year), root);
-        await GDRIVE.uploadPdf(new Blob([fromB64(it.b64)], { type: 'application/pdf' }), it.name, yr); done++;
+        const root = await GDRIVE.ensureFolder('Mietverträge', 'root'); let par = await GDRIVE.ensureFolder(String(it.year), root);
+        if (it.folder) par = await GDRIVE.ensureFolder(it.folder, par);
+        await GDRIVE.uploadPdf(new Blob([fromB64(it.b64)], { type: 'application/pdf' }), it.name, par); done++;
       } catch (e) { rest.push(it); }
     }
     await DB.setMeta('pdfQueue', rest);
@@ -1759,16 +1760,16 @@
       let drive = 'wartet';
       try {
         if (navigator.onLine && GCAL.isSignedIn()) {
-          const root = await GDRIVE.ensureFolder('Mietverträge', 'root'), yr = await GDRIVE.ensureFolder(String(year), root);
-          await GDRIVE.uploadPdf(new Blob([bytes], { type: 'application/pdf' }), name, yr); drive = 'ok';
-        } else await queueContract(name, year, bytes);
-      } catch (e) { try { await queueContract(name, year, bytes); } catch (x) { drive = 'fehler'; } }
+          const root = await GDRIVE.ensureFolder('Mietverträge', 'root'), yr = await GDRIVE.ensureFolder(String(year), root), bf = await GDRIVE.ensureFolder(fotoFolderName(b), yr);
+          await GDRIVE.uploadPdf(new Blob([bytes], { type: 'application/pdf' }), name, bf); drive = 'ok';
+        } else await queueContract(name, year, bytes, fotoFolderName(b));
+      } catch (e) { try { await queueContract(name, year, bytes, fotoFolderName(b)); } catch (x) { drive = 'fehler'; } }
       try { await patchBooking(b, { vertrag: 'unterschrieben', vertragAt: nowIso() }); b = Object.assign({}, b, { vertrag: 'unterschrieben' }); } catch (e) { /* Vertrag trotzdem gültig */ }
       const res = document.getElementById('signov'); if (!res) return;
       const pv = h('div', { class: 'spages' });
       res.replaceChildren(h('div', { class: 'ovin' },
         h('div', { class: 'ovtop' }, h('h2', {}, 'Vertrag unterschrieben ✓'), h('button', { class: 'btn sec', onclick: close }, 'Schließen')),
-        h('div', { class: 'warnbox okbox' }, drive === 'ok' ? '✓ In Drive abgelegt: Mietverträge/' + year + '/' + name : drive === 'wartet' ? 'Kein Netz oder nicht bei Google angemeldet: Der Vertrag ist auf diesem Gerät gemerkt und wird beim nächsten Abgleich hochgeladen.' : '⚠ Ablage im Drive nicht möglich. Bitte jetzt teilen und speichern.'),
+        h('div', { class: 'warnbox okbox' }, drive === 'ok' ? '✓ In Drive abgelegt: Mietverträge/' + year + '/' + fotoFolderName(b) + '/' + name : drive === 'wartet' ? 'Kein Netz oder nicht bei Google angemeldet: Der Vertrag ist auf diesem Gerät gemerkt und wird beim nächsten Abgleich hochgeladen.' : '⚠ Ablage im Drive nicht möglich. Bitte jetzt teilen und speichern.'),
         payView(b),
         h('div', { class: 'stack' },
           b.email ? h('button', { class: 'btn mail', onclick: async () => {
@@ -1869,8 +1870,8 @@
           try {
             const key = b0.id;
             if (!fc[key]) {
-              const root = await GDRIVE.ensureFolder('Zustandsfotos', 'root'), yr = await GDRIVE.ensureFolder(String(parse(b0.start).getFullYear()), root);
-              fc[key] = await GDRIVE.ensureFolder(fotoFolderName(b0), yr);
+              const root = await GDRIVE.ensureFolder('Mietverträge', 'root'), yr = await GDRIVE.ensureFolder(String(parse(b0.start).getFullYear()), root);
+              fc[key] = await GDRIVE.ensureFolder('Zustandsfotos', await GDRIVE.ensureFolder(fotoFolderName(b0), yr));
             }
             const id = await GDRIVE.uploadFile(new Blob([fromB64(rec.b64)], { type: 'image/jpeg' }), fotoFileName(f), fc[key], 'image/jpeg');
             const cur = state.bookings.find((x) => x.id === b0.id);
