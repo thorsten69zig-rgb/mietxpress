@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 66')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 67')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1771,7 +1771,7 @@
         h('div', { class: 'warnbox okbox' }, drive === 'ok' ? '✓ In Drive abgelegt: Mietverträge/' + year + '/' + name : drive === 'wartet' ? 'Kein Netz oder nicht bei Google angemeldet: Der Vertrag ist auf diesem Gerät gemerkt und wird beim nächsten Abgleich hochgeladen.' : '⚠ Ablage im Drive nicht möglich. Bitte jetzt teilen und speichern.'),
         payView(b),
         h('div', { class: 'stack' },
-          b.email ? h('button', { class: 'btn', onclick: async () => {
+          b.email ? h('button', { class: 'btn mail', onclick: async () => {
             try { if (navigator.clipboard) await navigator.clipboard.writeText(b.email); } catch (e) { /* egal */ }
             toast('Adresse kopiert – im Feld „An“ einfügen. Betreff: ' + MAILSUBJ);
             const file = new File([bytes], name, { type: 'application/pdf' });

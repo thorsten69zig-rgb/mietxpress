@@ -581,3 +581,4 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .fbig{width:100%;height:auto;border-radius:8px;margin:10px 0;background:#eef1f8;min-height:120px}
 .fotosw{display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:18px}
 .fotosw input{width:22px;height:22px}
+.btn.mail{background:#5ac8fa;color:#06213a}
