@@ -542,7 +542,6 @@
         h('button', { class: 'cb abh bigabh', onclick: () => openPickup(b) }, 'Abholung'),
         h('div', { class: 'cbrow' },
           h('button', { class: 'cb mv', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag'),
-          h('button', { class: 'cb sign', onclick: () => openSign(b) }, '✍ Digital unterschreiben'),
           h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, 'Nachricht')),
         h('div', { class: 'rrow' }, rechBtn(b),
           b.status !== 'storniert' ? h('span', { class: 'calst ' + (calOk ? 'ok' : (b.kalender === 'abweichend' ? 'warn' : 'no')) },
@@ -1046,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 74')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 75')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1411,6 +1410,7 @@
     const setSt = (st) => async () => { await patchBooking(b, { status: st, statusVorher: b.status }); };
     const FOTOS_PLATZ = h('div', { class: 'fotoslot' }, fotoSection(b));
     const acts = h('div', { class: 'ovacts' },
+      h('button', { class: 'cb sign full bigsign', onclick: () => openSign(b) }, '✍ Digital unterschreiben'),
       h('button', { class: 'cb mv full', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag erstellen (PDF)'),
       FOTOS_PLATZ,
       b.status !== 'abgeholt' && b.status !== 'zurueck' && b.status !== 'storniert' ? h('button', { class: 'cb abh', onclick: setSt('abgeholt') }, 'Als abgeholt markieren') : null,
