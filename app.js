@@ -1045,7 +1045,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 69')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 70')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1812,6 +1812,8 @@
     .filter((n) => fotoOn(state.arts.find((a) => a.name === n)));
   const THC = {};
   const phName = (ph) => ph === 'ab' ? 'Abholung' : 'Rückgabe';
+  const SLOTS = [['ges', 'Gesamtansicht'], ['zub', 'Zubehör'], ['zust', 'Zustand']];
+  const slotName = (k) => { const x = SLOTS.find((q) => q[0] === k); return x ? x[1] : ''; };
   const stampOf = (ts) => { const d = new Date(ts); return fmtDE(iso(d)) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
   const blobBytes = (bl) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(new Uint8Array(fr.result)); fr.onerror = rej; fr.readAsArrayBuffer(bl); });
   const fotoPending = () => state.bookings.reduce((n, b) => n + (b.fotos || []).filter((f) => !f.drive).length, 0);
@@ -1837,16 +1839,16 @@
     const tx = tc.getContext('2d'); if (tx) tx.drawImage(cv, 0, 0, tc.width, tc.height);
     return { blob, th: tc.toDataURL('image/jpeg', 0.6) };
   }
-  async function addPhotos(b, art, ph, files) {
+  async function addPhotos(b, art, ph, files, slot) {
     for (const f of files) {
       const ts = nowIso();
-      const p = await procPhoto(f, stampOf(ts) + ' · ' + art + ' · ' + phName(ph));
+      const p = await procPhoto(f, stampOf(ts) + ' · ' + art + ' · ' + phName(ph) + (slot ? ' · ' + slotName(slot) : ''));
       if (!p.blob) throw new Error('foto');
       const id = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
       await DB.setMeta('foto:' + id, { b64: toB64(await blobBytes(p.blob)) });
       await DB.setMeta('fth:' + id, p.th); THC[id] = p.th;
       const cur = state.bookings.find((x) => x.id === b.id) || b;
-      await patchBooking(cur, { fotos: (cur.fotos || []).concat([{ id, art, ph, ts, drive: '' }]) });
+      await patchBooking(cur, { fotos: (cur.fotos || []).concat([{ id, art, ph, slot: slot || '', ts, drive: '' }]) });
     }
     flushFotos().catch(() => {});
   }
@@ -1856,7 +1858,7 @@
   };
   const fotoFileName = (f) => {
     const d = new Date(f.ts);
-    return String(f.art).replace(/[\/\\:*?"<>|]+/g, '-') + '_' + phName(f.ph) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '_' + String(f.id).slice(-3) + '.jpg';
+    return String(f.art).replace(/[\/\\:*?"<>|]+/g, '-') + '_' + phName(f.ph) + (f.slot ? '_' + slotName(f.slot) : '') + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '_' + String(f.id).slice(-3) + '.jpg';
   };
   let fotoBusy = false;
   async function flushFotos() {
@@ -1905,7 +1907,7 @@
       const img = await doc.embedJpg(it.bytes), sc = Math.min(cw / img.width, ch / img.height), w = img.width * sc, h2 = img.height * sc;
       const x = gx + (pos % 2) * (cw + gx), yTop = Hh - 70 - Math.floor(pos / 2) * (ch + 60);
       page.drawImage(img, { x, y: yTop - h2, width: w, height: h2 });
-      page.drawText(safeTxt(it.f.art + ' · ' + stampOf(it.f.ts)), { x, y: yTop - ch - 14, size: 8, font });
+      page.drawText(safeTxt(it.f.art + (it.f.slot ? ' · ' + slotName(it.f.slot) : '') + ' · ' + stampOf(it.f.ts)), { x, y: yTop - ch - 14, size: 8, font });
       pos++;
     }
   }
@@ -1921,7 +1923,7 @@
     let url = null;
     const close = () => { const o = document.getElementById('fotoov'); if (o) o.remove(); if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* egal */ } } };
     const img = h('img', { class: 'fbig', alt: '' });
-    const info = h('div', { class: 'tnone' }, f.art + ' · ' + phName(f.ph) + ' · ' + stampOf(f.ts) + (f.drive ? ' · in Drive ✓' : ' · noch nicht in Drive'));
+    const info = h('div', { class: 'tnone' }, f.art + ' · ' + phName(f.ph) + (f.slot ? ' · ' + slotName(f.slot) : '') + ' · ' + stampOf(f.ts) + (f.drive ? ' · in Drive ✓' : ' · noch nicht in Drive'));
     const del = h('button', { class: 'btn sec', onclick: async () => {
       if (!window.confirm('Dieses Foto wirklich löschen?')) return;
       const cur = state.bookings.find((x) => x.id === bid); if (!cur) return;
@@ -1945,19 +1947,25 @@
     const arts = fotoArts(b); if (!arts.length) return null;
     const fl = b.fotos || [], pend = fl.filter((f) => !f.drive).length;
     const area = (art, ph) => {
-      const inp = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: 'display:none' });
-      inp.addEventListener('change', async () => {
-        const files = [...inp.files]; inp.value = ''; if (!files.length) return;
-        toast('Foto wird gespeichert …');
-        try { await addPhotos(b, art, ph, files); toast('Foto gespeichert'); } catch (e) { console.error(e); toast('Foto konnte nicht gespeichert werden'); }
-      });
       const mine = fl.filter((f) => f.art === art && f.ph === ph);
+      const tile = (k, label) => {
+        const f = mine.find((x) => x.slot === k);
+        if (f) return h('div', { class: 'fslot' }, h('button', { class: 'fthumb big', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳')), h('span', {}, label));
+        const inp = h('input', { type: 'file', accept: 'image/*', capture: 'environment', style: 'display:none' });
+        inp.addEventListener('change', async () => {
+          const files = [...inp.files].slice(0, 1); inp.value = ''; if (!files.length) return;
+          toast('Foto wird gespeichert …');
+          try { await addPhotos(b, art, ph, files, k); toast('Foto gespeichert'); } catch (e) { console.error(e); toast('Foto konnte nicht gespeichert werden'); }
+        });
+        return h('div', { class: 'fslot' }, inp, h('button', { class: 'fthumb big empty', onclick: () => inp.click() }, h('span', { class: 'cam' }, '📷')), h('span', {}, label));
+      };
+      const extra = mine.filter((f) => !SLOTS.some((q) => q[0] === f.slot));
       return h('div', { class: 'frow' }, h('span', { class: 'flab' }, phName(ph)),
-        h('div', { class: 'fth' }, mine.map((f) => h('button', { class: 'fthumb', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳'))),
-          inp, h('button', { class: 'btn sec sm', onclick: () => inp.click() }, '📷 Foto')));
+        h('div', { class: 'fth' }, SLOTS.map((q) => tile(q[0], q[1])),
+          extra.map((f) => h('div', { class: 'fslot' }, h('button', { class: 'fthumb big', onclick: () => openFoto(b.id, f.id) }, thumbImg(f), f.drive ? null : h('i', {}, '⏳')), h('span', {}, 'weiteres')))));
     };
     return h('div', { class: 'slip pad fotobox' }, h('div', { class: 'ct' }, '📷 Zustandsfotos'),
-      h('div', { class: 'tnone' }, 'Freiwillig. Nur die Mietgegenstände fotografieren, keine Personen und keine Ausweise.'),
+      h('div', { class: 'tnone' }, 'Freiwillig, bis zu 3 Fotos je Abholung und Rückgabe: Gesamtansicht, Zubehör, Zustand. Nur die Mietgegenstände fotografieren, keine Personen und keine Ausweise.'),
       arts.map((a) => h('div', { class: 'fart' }, h('b', {}, a), area(a, 'ab'), area(a, 'rueck'))),
       pend ? h('div', { class: 'warnbox', style: 'margin-top:8px' }, '⏳ ' + pend + (pend === 1 ? ' Foto ist' : ' Fotos sind') + ' noch nicht in Drive und werden beim nächsten Netz hochgeladen.',
         h('button', { class: 'btn sec sm', style: 'margin-left:8px', onclick: async () => { const n = await flushFotos(); toast(n ? n + ' hochgeladen' : 'Noch nicht möglich (Netz / Google-Anmeldung)'); } }, 'Jetzt hochladen')) : null,

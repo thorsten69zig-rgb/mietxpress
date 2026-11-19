@@ -582,3 +582,9 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .fotosw{display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:18px}
 .fotosw input{width:22px;height:22px}
 .btn.mail{background:#9fdcfd;color:#06213a}
+/* v70: drei feste Foto-Felder */
+.fotobox .fslot{display:flex;flex-direction:column;align-items:center;gap:4px;width:92px}
+.fotobox .fslot>span{font-size:13px;color:#4b5573;text-align:center}
+.fthumb.big{width:92px;height:92px}
+.fthumb.empty{border:2px dashed #b8c0d6;background:#f6f8fd;display:flex;align-items:center;justify-content:center}
+.fthumb .cam{font-size:30px}
