@@ -542,7 +542,7 @@
         h('button', { class: 'cb abh bigabh', onclick: () => openPickup(b) }, 'Abholung'),
         h('div', { class: 'cbrow' },
           h('button', { class: 'cb mv', onclick: (ev) => makeContract(b, ev.currentTarget) }, 'Mietvertrag'),
-          h('button', { class: 'cb msg', onclick: () => openMsgs(b) }, 'Nachricht')),
+        ),
         h('div', { class: 'rrow' }, rechBtn(b),
           b.status !== 'storniert' ? h('span', { class: 'calst ' + (calOk ? 'ok' : (b.kalender === 'abweichend' ? 'warn' : 'no')) },
             calOk ? '✓ im Kalender' : (b.kalender === 'abweichend' ? '⚠ Kalender abweichend' : '✕ noch nicht im Kalender')) : null),
@@ -554,6 +554,7 @@
           b.vertragAt ? h('div', {}, '✍ Vertrag digital unterschrieben am ' + fmtD(b.vertragAt.slice(0, 10))) : null,
           b.email ? h('div', {}, h('span', {}, 'E-Mail: '), h('a', { href: 'mailto:' + b.email }, b.email)) : null,
           b.notiz ? h('div', { class: 'note' }, b.notiz) : null,
+          h('button', { class: 'cb msg', style: 'margin:8px 0', onclick: () => openMsgs(b) }, '💬 Nachricht an Kunden'),
           actions(b)) : null,
         fm ? h('button', { class: 'runclose', style: 'margin-top:8px', onclick: () => { state.open['z' + b.id] = false; render(); } }, '▴ Einklappen') : null));
   }
@@ -1045,7 +1046,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 77')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 78')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
