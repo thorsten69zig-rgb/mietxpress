@@ -595,10 +595,15 @@ input[type=date],select.inp{min-width:0;max-width:100%;width:100%}
 .cb.bigabh{display:block;width:100%;margin-top:12px;padding:20px 14px;font-size:20px;border-radius:16px}
 .cb.bigsign{padding:18px 14px;font-size:18px}
 
-/* v79: Breite Ansicht (iPad quer) */
+/* v79/v80: Breite Ansicht (iPad quer): Kalender volle Breite und groß, Tagesdetails darunter */
 .wrap.breit{max-width:900px}
-.wrap.breit.v-monat{max-width:1500px;padding-left:26px;padding-right:26px}
-.breit .bgrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start}
-.breit .bpanel{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto;padding-right:2px}
+.wrap.breit.v-monat{max-width:none;padding-left:26px;padding-right:26px}
+.breit .bpanel{max-width:900px;margin:18px auto 0}
 .breit .bpanel h3{margin-top:0}
-@media (max-width:899px){.wrap.breit.v-monat{max-width:640px;padding-left:14px;padding-right:14px}.breit .bgrid{grid-template-columns:1fr}.breit .bpanel{position:static;max-height:none;overflow:visible}}
+.breit .grid{gap:4px}
+.breit .day .dn{font-size:16px;padding:2px 5px}
+.breit .pc{font-size:13px;padding:3px 5px}
+.breit .pc .pn{font-size:13.5px}
+.breit .pc .pt,.breit .pc .po{font-size:12px}
+.breit .dow{font-size:14px}
+@media (max-width:899px){.wrap.breit.v-monat{max-width:640px;padding-left:14px;padding-right:14px}}

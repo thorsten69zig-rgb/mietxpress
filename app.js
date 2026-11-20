@@ -602,7 +602,7 @@
     const run = () => {
       if (!grid.isConnected) return;
       const top = grid.getBoundingClientRect().top + window.scrollY;
-      const H = Math.max(rows * 74 + 20, window.innerHeight - top - 8);
+      const H = Math.max(rows * (grid.closest('.breit') ? 150 : 74) + 20, window.innerHeight - top - 8);
       grid.style.height = H + 'px';
       grid.style.gridTemplateRows = 'auto repeat(' + rows + ', minmax(0, 1fr))';
       grid.querySelectorAll('.day').forEach((cell) => {
@@ -1048,7 +1048,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 79')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 80')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
