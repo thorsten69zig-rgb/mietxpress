@@ -471,6 +471,15 @@
     return { t: 'vor ' + (-de) + ' Tagen', c: 'past' };
   }
   // Pakete aus der Notiz lesen: Wochenendpaket (Fr–So, Sa–So …) und Zusatzpakete ("+ Nebel Paket 1 (1 Liter …) 10 €")
+  // Artikeltext mit Stückzahl: "2× Bierzeltgarnitur" (aus den Positionen; sonst aus der Notiz "2 Stück", wenn es nur einen Artikel gibt)
+  function artLine(b) {
+    const base = b.artikel || '';
+    const pos = Array.isArray(b.positionen) ? b.positionen.filter((p) => p && p.artikel) : [];
+    if (pos.some((p) => Number(p.anzahl) > 1)) return pos.map((p) => (Number(p.anzahl) > 1 ? p.anzahl + '× ' : '') + p.artikel).join(', ');
+    if (/\d\s*[×x]\s/.test(base)) return base;
+    if (pos.length <= 1 && base.indexOf(',') < 0) { const m = /(\d+)\s*(?:Stück|Stk)/i.exec(b.notiz || ''); if (m && Number(m[1]) > 1) return m[1] + '× ' + base; }
+    return base;
+  }
   function pkgInfo(b) {
     const t = String(b.notiz || ''), out = [];
     const w = t.match(/Wochenendpaket\s*(Fr\s*[–-]\s*So|Fr\s*[–-]\s*Sa|Sa\s*[–-]\s*So)?/i);
@@ -526,7 +535,7 @@
       h('div', { class: 'body' },
         h('div', { class: 'top' }, h('span', { class: 'when ' + due.c }, due.t),
           h('span', { class: 'tr' }, isKombi(b) ? h('span', { class: 'kombi' }, 'KOMBI') : null, h('span', { class: 'chip st-' + b.status }, stLabel))),
-        h('div', { class: 'name' }, b.artikel || '(ohne Artikel)'),
+        h('div', { class: 'name' }, artLine(b) || '(ohne Artikel)'),
         h('div', { class: 'art' }, (b.name || '(ohne Name)') + (sp ? ' 🚫' : '')),
         pkgInfo(b).length ? h('div', { class: 'pkgrow' }, pkgInfo(b).map((p) => h('span', { class: 'pkg ' + p.k, title: p.d }, (p.k === 'wk' ? '📦 ' : '') + p.t + (p.d ? ' (' + p.d + ')' : '')))) : null,
         h('div', { class: 'tl' }, h('b', {}, 'Abholung'), ' ' + wd(b.start) + ' ' + fmtD(b.start) + ' · ' + hhmm(b.abholzeit || b.zeit)),
@@ -682,7 +691,7 @@
         list.slice(0, bShown).map((b) => {
           const col = bookCatColor(b);
           return h('span', { class: 'pc' + (b.status === 'zurueck' ? ' done' : ''), style: 'border-left:4px solid ' + col + ';background:' + col + '66' },
-            h('span', { class: 'pn' }, abbrArt(b.artikel) || b.name || '—'),
+            h('span', { class: 'pn' }, abbrArt(artLine(b)) || b.name || '—'),
             (b.start === ds ? (b.abholzeit || b.zeit || '') : (b.ende === ds ? (b.rueckzeit || '') : '')) ? h('span', { class: 'pt' }, (b.start === ds ? '↑ ' + (b.abholzeit || b.zeit) : '↓ ' + b.rueckzeit)) : null,
             b.start === ds && b.preis - b.anzahlung > 0 ? h('span', { class: 'po' }, 'Offen ' + eur(b.preis - b.anzahlung)) : null);
         }),
@@ -1048,7 +1057,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 80')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 81')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -1393,7 +1402,7 @@
     const row = (l, v, cls) => h('div', { class: 'r' + (cls ? ' ' + cls : '') }, h('span', {}, l), h('b', {}, v));
     const sm = sperrMatch(b);
     const slip = h('div', { class: 'slip' },
-      row('Mietgegenstand', b.artikel || '–'),
+      row('Mietgegenstand', artLine(b) || '–'),
       row('Mietdatum', fmtDE(b.start) + (n > 1 ? ' – ' + fmtDE(b.ende) : '')),
       row('Uhrzeit', b.abholzeit ? b.abholzeit + ' Uhr' : 'Zeit offen'),
       row('Wochentag', s.toLocaleDateString('de-DE', { weekday: 'long' })),
@@ -1697,7 +1706,7 @@
       const row = (l, v, cls) => h('div', { class: 'r' + (cls ? ' ' + cls : '') }, h('span', {}, l), h('b', {}, v));
       return h('div', {},
         h('div', { class: 'slip' },
-          row('Mietgegenstand', bk.artikel || '–'),
+          row('Mietgegenstand', artLine(bk) || '–'),
           row('Mietpreis gesamt', eur(bk.preis)),
           row('Schon bezahlt', eur(bk.anzahlung)),
           row('Noch zu zahlen', offen > 0 ? eur(offen) : '0 € ✓'),
