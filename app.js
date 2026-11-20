@@ -37,6 +37,7 @@
 
   state.cursor = new Date(today0().getFullYear(), today0().getMonth(), 1);
   state.sel = iso(today0());
+  try { state.breit = localStorage.getItem('mxBreit') === '1'; } catch (e) { state.breit = false; }
   try { if (/[?&]ansicht=schnell\b/.test(location.search)) localStorage.setItem('mxSchnell', '1'); if (/[?&]ansicht=normal\b/.test(location.search)) localStorage.setItem('mxSchnell', '0'); state.schnell = localStorage.getItem('mxSchnell') === '1'; } catch (e) { state.schnell = /[?&]ansicht=schnell\b/.test(location.search); }
   state.von = iso(today0());
   state.weekStart = iso(addDays(today0(), -((today0().getDay() + 6) % 7)));
@@ -641,7 +642,7 @@
     const p = String(t).split(/\s*[,+&]\s*|\s+und\s+/).filter(Boolean);
     return p.length > 1 ? p[0] + ' +' + (p.length - 1) : p[0] || '';
   }
-  function viewMonat(main, noPanel) {
+  function viewMonat(main, noPanel, pHost) {
     const c = state.cursor, y = c.getFullYear(), mo = c.getMonth();
     main.append(h('div', { class: 'mnav' },
       h('button', { 'aria-label': 'Vorheriger Monat', onclick: () => gotoMonth(y, mo - 1) }, '‹'),
@@ -691,36 +692,37 @@
     main.append(grid);
     fitGrid(grid, rows);
     if (noPanel) return;
+    const P = pHost || main;
 
     const rank = (x) => x.status === 'angefragt' ? 0 : (foldMode(x) && !state.open['z' + x.id] ? 1 : 2);
     const sel = (map[state.sel] || []).slice().sort((x, y) => (rank(x) - rank(y)) || sortByStart(x, y));
-    main.append(h('h3', {}, fmtFull(state.sel)));
-    main.append(h('div', { class: 'grp grp-mx' }, 'MietXpress · Buchungen'));
+    P.append(h('h3', {}, fmtFull(state.sel)));
+    P.append(h('div', { class: 'grp grp-mx' }, 'MietXpress · Buchungen'));
     if (sel.length) sel.forEach((b) => {
       const runs = b.start !== state.sel && (b.ende || b.start) !== state.sel; // läuft nur durch, weder Abholung noch Rückgabe an diesem Tag
       const total = Math.round((parse(b.ende || b.start) - parse(b.start)) / 864e5) + 1, nth = Math.round((parse(state.sel) - parse(b.start)) / 864e5) + 1;
       const toggle = () => { state.open['c' + b.id] = !state.open['c' + b.id]; render(); };
       if (runs && !state.open['c' + b.id]) {
-        main.append(h('button', { class: 'runrow', style: '--pc:' + bookCatColor(b), onclick: toggle },
+        P.append(h('button', { class: 'runrow', style: '--pc:' + bookCatColor(b), onclick: toggle },
           h('em', {}, 'LÄUFT'),
           h('b', {}, abbrArt(b.artikel) || b.name),
           h('span', {}, (b.name || '') + ' · Tag ' + nth + '/' + total + ' · bis ' + wd(b.ende || b.start) + ' ' + fmtD(b.ende || b.start)),
           h('i', {}, '▾ aufklappen')));
       } else {
-        if (runs) main.append(h('button', { class: 'runclose', onclick: toggle }, '▴ Einklappen · ' + (abbrArt(b.artikel) || b.name) + ' läuft nur durch'));
-        main.append(card(b));
+        if (runs) P.append(h('button', { class: 'runclose', onclick: toggle }, '▴ Einklappen · ' + (abbrArt(b.artikel) || b.name) + ' läuft nur durch'));
+        P.append(card(b));
       }
     });
-    else main.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
+    else P.append(h('div', { class: 'empty' }, 'Keine Buchungen an diesem Tag.'));
 
     const dayEv = (ems[state.sel] || []).slice().sort(byKind);
     let lastK = null;
     dayEv.forEach((ev) => {
       const k = evKind(ev);
-      if (k !== lastK) { main.append(h('div', { class: 'grp grp-' + k }, KIND_LABEL[k])); lastK = k; }
-      main.append(evRow(ev));
+      if (k !== lastK) { P.append(h('div', { class: 'grp grp-' + k }, KIND_LABEL[k])); lastK = k; }
+      P.append(evRow(ev));
     });
-    if (state.cal.connected) main.append(h('button', { class: 'btn sec addev', onclick: () => openGev(null, state.sel) }, '+ Termin im Google Kalender'));
+    if (state.cal.connected) P.append(h('button', { class: 'btn sec addev', onclick: () => openGev(null, state.sel) }, '+ Termin im Google Kalender'));
   }
 
   // ===== Google-Termine anlegen / ändern / löschen =====
@@ -1046,7 +1048,7 @@
           await DB.clearAll(); await load(); state.menu = false; render();
         } }, 'Alle lokalen Daten löschen'),
         file),
-      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 78')));
+      h('p', { class: 'stand' }, 'Alle Daten liegen auch lokal auf diesem Gerät und funktionieren ohne Internet. · App-Version 79')));
   }
 
   // ===== Bearbeiten (anlegen, ändern, löschen – alles lokal, Abgleich später) =====
@@ -2225,6 +2227,11 @@
         h('div', { class: 'pextra' }, 'Preisliste 2026, Stand 10/2026')));
   }
   // ===== Schnellansicht (iPad): links Kalender, rechts Tag / Preise =====
+  function setBreit(on) {
+    state.breit = !!on;
+    try { localStorage.setItem('mxBreit', on ? '1' : '0'); } catch (e) {}
+    render(); window.scrollTo(0, 0);
+  }
   function setSchnell(on) {
     state.schnell = !!on; state.menu = false;
     try { localStorage.setItem('mxSchnell', on ? '1' : '0'); } catch (e) {}
@@ -2610,12 +2617,14 @@
     const y = window.scrollY;
     const ovTop = {}; app.querySelectorAll('.ov[id]').forEach((o) => { ovTop[o.id] = o.scrollTop; });
     app.replaceChildren();
-    const wrap = h('div', { class: 'wrap' + (state.schnell ? ' schnell' : '') });
+    const breitOn = state.breit && !state.schnell;
+    const wrap = h('div', { class: 'wrap' + (state.schnell ? ' schnell' : '') + (breitOn ? ' breit v-' + state.view : '') });
     wrap.append(h('header', {},
       h('img', { class: 'logoimg', src: state.logo || 'logo.jpg', alt: 'müllers-MietXpress' }),
       h('div', { class: 'ttl' }, h('h1', {}, 'MietXpress'), h('div', { class: 'hdate' }, h('span', {}, today0().toLocaleDateString('de-DE', { weekday: 'long' }) + ' '), h('b', {}, today0().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })))),
       h('span', { class: 'net ' + (state.online ? 'on' : 'off') }, state.online ? 'Online' : 'Offline'),
       h('button', { class: 'iconbtn' + (state.schnell ? ' on' : ''), 'aria-label': state.schnell ? 'Zurück zur normalen Ansicht' : 'Schnellansicht (iPad)', title: state.schnell ? 'Normale Ansicht' : 'Schnellansicht', onclick: () => setSchnell(!state.schnell) }, '🖥️'),
+      h('button', { class: 'iconbtn' + (state.breit ? ' on' : ''), 'aria-label': state.breit ? 'Zurück zur schmalen Ansicht' : 'Breite Ansicht (iPad quer)', title: state.breit ? 'Schmale Ansicht' : 'Breite Ansicht', onclick: () => setBreit(!state.breit) }, '↔️'),
       h('button', { class: 'iconbtn', 'aria-label': 'Suche', onclick: () => { state.search = { q: '' }; render(); } }, '🔍'),
       h('button', { class: 'iconbtn', 'aria-label': 'Nachricht', onclick: openMsgsGeneric }, '💬'),
       h('button', { class: 'iconbtn', 'aria-label': 'Neue Buchung', onclick: () => openEdit(null) }, '+'),
@@ -2641,6 +2650,9 @@
         const L = h('div', { class: 'scol' }), R = h('div', { class: 'sp' });
         viewMonat(L, true); schnellPanel(R); main.append(h('div', { class: 'sgrid' }, L, R));
       }
+    } else if (state.view === 'monat' && breitOn) {
+      const L = h('div', { class: 'bcol' }), R = h('div', { class: 'bpanel' });
+      viewMonat(L, false, R); main.append(h('div', { class: 'bgrid' }, L, R));
     } else if (state.view === 'monat') viewMonat(main);
     else if (state.view === 'liste') viewListe(main);
     else if (state.view === 'woche') viewWoche(main);
